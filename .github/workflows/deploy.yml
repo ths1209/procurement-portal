@@ -35,6 +35,10 @@ jobs:
           VITE_TEABLE_USERS_TABLE_ID:    ${{ secrets.VITE_TEABLE_USERS_TABLE_ID }}
           VITE_TEABLE_PROJECTS_TABLE_ID: ${{ secrets.VITE_TEABLE_PROJECTS_TABLE_ID }}
           VITE_TEABLE_TOOLS_TABLE_ID:    ${{ secrets.VITE_TEABLE_TOOLS_TABLE_ID }}
+          VITE_SHUHUAN_WEBHOOK:          ${{ secrets.VITE_SHUHUAN_WEBHOOK }}
+          VITE_AI_API_KEY:               ${{ secrets.VITE_AI_API_KEY }}
+          VITE_AI_API_BASE:              ${{ secrets.VITE_AI_API_BASE }}
+          VITE_AI_MODEL:                 ${{ secrets.VITE_AI_MODEL }}
 
       - uses: actions/upload-pages-artifact@v3
         with:

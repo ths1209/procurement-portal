@@ -95,31 +95,42 @@ ${rowLines}
 4. 最后一行单独注明：（本报告由 AI 辅助生成）`
 
   let text
+  let aiOk = false
   if (AI_BASE && AI_KEY) {
-    console.log(`调用 AI：${AI_BASE}`)
-    const res = await fetch(`${AI_BASE}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${AI_KEY}` },
-      body: JSON.stringify({
-        model: AI_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.7,
-        max_tokens: 600,
-      }),
-    })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      throw new Error(err.error?.message ?? `AI 接口错误 ${res.status}`)
+    try {
+      console.log(`调用 AI：${AI_BASE}`)
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 30000)
+      const res = await fetch(`${AI_BASE}/chat/completions`, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${AI_KEY}` },
+        body: JSON.stringify({
+          model: AI_MODEL,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.7,
+          max_tokens: 600,
+        }),
+      })
+      clearTimeout(timer)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error?.message ?? `AI 接口错误 ${res.status}`)
+      }
+      const data = await res.json()
+      text = data.choices?.[0]?.message?.content?.trim() ?? '（AI 返回内容为空）'
+      aiOk = true
+      console.log('✅ AI 调用成功')
+    } catch (e) {
+      console.warn(`⚠️  AI 调用失败（${e.message}），降级为占位内容`)
     }
-    const data = await res.json()
-    text = data.choices?.[0]?.message?.content?.trim() ?? '（AI 返回内容为空）'
-    console.log('AI 调用成功')
-  } else {
-    console.warn('AI 未配置，写入占位内容')
+  }
+
+  if (!aiOk) {
     const risk = byStatus['逾期'] > 0
       ? `本月存在 ${byStatus['逾期']} 个逾期项目，需重点关注并推动资源保障。`
       : '本月无逾期项目，整体执行情况良好。'
-    text = `${YEAR} 年 ${MONTH} 月，采购运营组共推进项目 ${total} 项，其中已完成 ${byStatus['已完成']} 项、进行中 ${byStatus['进行中']} 项，整体完成率为 ${completeRate}%。${risk}\n\n亮点方面，各采购组织积极配合，重点任务整体推进有序。建议关注剩余在途项目的交付节点，强化跨组协作与风险预警机制，确保按期交付。\n\n（本报告由 AI 辅助生成）`
+    text = `${YEAR} 年 ${MONTH} 月，采购运营组共推进项目 ${total} 项，其中已完成 ${byStatus['已完成']} 项、进行中 ${byStatus['进行中']} 项，整体完成率为 ${completeRate}%。${risk}\n\n亮点方面，各采购组织积极配合，重点任务整体推进有序。建议关注剩余在途项目的交付节点，强化跨组协作与风险预警机制，确保按期交付。\n\n（本报告由 AI 辅助生成，AI 服务本次不可达）`
   }
 
   const dir  = path.join(process.cwd(), 'ai-summaries')

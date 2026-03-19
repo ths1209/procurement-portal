@@ -25,17 +25,15 @@ export async function sendNotify(jobId, content) {
     return { ok: false, msg: '数环通未配置' }
   }
   try {
-    const res = await fetch(WEBHOOK, {
+    // 使用 no-cors + text/plain 绕过 CORS 预检，服务器照常收到 JSON 字符串
+    await fetch(WEBHOOK, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({ jobId, title: '采购运营门户通知', content }),
     })
-    if (!res.ok) {
-      console.warn('[数环通] 推送失败', res.status)
-      return { ok: false, msg: `推送失败 (${res.status})` }
-    }
-    console.log(`[数环通] 已推送 → 工号:${jobId}`)
-    return { ok: true, msg: `已推送至工号 ${jobId}` }
+    console.log(`[数环通] 请求已发送 → 工号:${jobId}`)
+    return { ok: true, msg: `已发送至工号 ${jobId}` }
   } catch (e) {
     console.warn('[数环通] 推送异常:', e.message)
     return { ok: false, msg: e.message }

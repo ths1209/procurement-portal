@@ -1,0 +1,54 @@
+/**
+ * 数环通消息推送模块
+ *
+ * 环境变量（在 .env.local 和 GitHub Secrets 中配置）：
+ *   VITE_SHUHUAN_WEBHOOK : 数环通工作流触发 URL（包含鉴权 token，不要提交到 git）
+ *
+ * 请求格式（POST JSON）：
+ *   { "jobId": "工号", "content": "消息内容" }
+ */
+
+const WEBHOOK = import.meta.env.VITE_SHUHUAN_WEBHOOK ?? ''
+
+/**
+ * 发送数环通推送
+ * @param {string} jobId   接收人工号
+ * @param {string} content 消息正文
+ */
+export async function sendNotify(jobId, content) {
+  if (!jobId) return
+  if (!WEBHOOK) {
+    console.log(`[数环通·未配置] 工号:${jobId}\n${content}`)
+    return
+  }
+  try {
+    const res = await fetch(WEBHOOK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobId, title: '采购运营门户通知', content }),
+    })
+    if (!res.ok) console.warn('[数环通] 推送失败', res.status)
+    else console.log(`[数环通] 已推送 → 工号:${jobId}`)
+  } catch (e) {
+    console.warn('[数环通] 推送异常:', e.message)
+  }
+}
+
+/** 项目审核通过通知 */
+export async function notifyApproved(project) {
+  if (!project.ownerJobId) return
+  const date = project.planDate ? project.planDate.slice(0, 10) : '未设置'
+  await sendNotify(
+    project.ownerJobId,
+    `【项目审核通过】您的项目「${project.task?.slice(0, 30)}」已审核通过。\n计划交付日期：${date}，请按期推进。`
+  )
+}
+
+/** 项目交付期限临近通知（3 或 1 个工作日） */
+export async function notifyDeadline(project, daysLeft) {
+  if (!project.ownerJobId) return
+  await sendNotify(
+    project.ownerJobId,
+    `【交付提醒】您负责的项目「${project.task?.slice(0, 30)}」距计划交付还剩 ${daysLeft} 个工作日（${project.planDate?.slice(0, 10)}），请及时跟进。`
+  )
+}

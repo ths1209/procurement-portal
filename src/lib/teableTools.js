@@ -19,7 +19,7 @@ const FIELD_DEFS = [
   { name: FT.desc,       type: 'singleLineText' },
   { name: FT.group,      type: 'singleSelect', options: { choices: [
     { name: '采购部通用' }, { name: '运营分析组' },
-    { name: '稽核组' },    { name: '支付类合作社管理组' },
+    { name: '稽核组' },    { name: '支付类合作商管理组' },
   ]}},
   { name: FT.attachment, type: 'attachment' },
   { name: FT.fileUrl,    type: 'singleLineText' },

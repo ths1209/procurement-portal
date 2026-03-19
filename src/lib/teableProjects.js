@@ -11,6 +11,8 @@ export const F = {
   progress:    '任务当前进展',
   status:      '完成状态',
   owner:       '责任人',
+  ownerJobId:  '责任人工号',
+  org:         '采购组织',
   deliverable: '交付成果链接',
   lateReason:  '未及时交付原因分析',
   taskList:    '任务清单（具体任务分解）',
@@ -33,6 +35,10 @@ const FIELD_DEFS = [
     ]}
   },
   { name: F.owner,       type: 'singleLineText' },
+  { name: F.ownerJobId,  type: 'singleLineText' },
+  { name: F.org,         type: 'singleSelect', options: { choices: [
+    { name: '运营分析组' }, { name: '采购稽核组' }, { name: '支付类合作商管理组' },
+  ]}},
   { name: F.deliverable, type: 'singleLineText' },
   { name: F.lateReason,  type: 'longText' },
   { name: F.taskList,    type: 'longText' },
@@ -73,6 +79,8 @@ function norm(r) {
     progress:    f[F.progress]    ?? '',
     status:      f[F.status]      ?? '',
     owner:       f[F.owner]       ?? '',
+    ownerJobId:  f[F.ownerJobId]  ?? '',
+    org:         f[F.org]         ?? '',
     deliverable: f[F.deliverable] ?? '',
     lateReason:  f[F.lateReason]  ?? '',
     taskList:    f[F.taskList]    ?? '',

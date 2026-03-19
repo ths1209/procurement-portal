@@ -1,0 +1,26 @@
+name: 项目交付期限提醒
+
+on:
+  # 每个工作日早 9:00（北京时间 = UTC+8，即 UTC 01:00）
+  schedule:
+    - cron: '0 1 * * 1-5'
+  # 支持手动触发，用于测试
+  workflow_dispatch:
+
+jobs:
+  check-deadlines:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 检查项目交付期限并推送通知
+        run: node scripts/check-deadlines.js
+        env:
+          VITE_TEABLE_API_BASE:          ${{ secrets.VITE_TEABLE_API_BASE }}
+          VITE_TEABLE_TOKEN:             ${{ secrets.VITE_TEABLE_TOKEN }}
+          VITE_TEABLE_PROJECTS_TABLE_ID: ${{ secrets.VITE_TEABLE_PROJECTS_TABLE_ID }}
+          VITE_SHUHUAN_WEBHOOK:          ${{ secrets.VITE_SHUHUAN_WEBHOOK }}

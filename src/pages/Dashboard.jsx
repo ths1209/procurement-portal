@@ -6,13 +6,13 @@ import { listFileTools, createFileTool, deleteFileTool, trackDownload, isToolsCo
 
 const GRADS = ['#6366F1','#0EA5E9','#10B981','#F59E0B','#8B5CF6','#14B8A6','#F97316','#EC4899']
 
-const GROUPS = ['采购部通用', '运营分析组', '稽核组', '支付类合作社管理组']
+const GROUPS = ['采购部通用', '运营分析组', '稽核组', '支付类合作商管理组']
 
 const GROUP_CFG = {
   '采购部通用':        { emoji:'🏢', color:'#6366F1', bg:'rgba(99,102,241,0.07)'  },
   '运营分析组':        { emoji:'📊', color:'#0EA5E9', bg:'rgba(14,165,233,0.07)'  },
   '稽核组':            { emoji:'🔍', color:'#10B981', bg:'rgba(16,185,129,0.07)'  },
-  '支付类合作社管理组': { emoji:'💳', color:'#F59E0B', bg:'rgba(245,158,11,0.07)' },
+  '支付类合作商管理组': { emoji:'💳', color:'#F59E0B', bg:'rgba(245,158,11,0.07)' },
 }
 
 const DEFAULT_AI = [

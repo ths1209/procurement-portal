@@ -607,6 +607,7 @@ function MonthlyReport({ rows, onClose }) {
   const [aiText,    setAiText]    = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError,   setAiError]   = useState('')
+  const [aiProgress, setAiProgress] = useState('')
 
   // 切换月份时清空 AI 内容
   function changeDate(newYear, newMonth) {
@@ -614,14 +615,17 @@ function MonthlyReport({ rows, onClose }) {
   }
 
   async function handleAiSummary() {
-    setAiLoading(true); setAiError(''); setAiText('')
+    setAiLoading(true); setAiError(''); setAiText(''); setAiProgress('')
     try {
-      const text = await generateMonthlySummary({ year, month, stats, rows: monthRows })
+      const text = await generateMonthlySummary({
+        year, month, stats, rows: monthRows,
+        onProgress: msg => setAiProgress(msg),
+      })
       setAiText(text)
     } catch(e) {
       setAiError('AI 生成失败：' + e.message)
     } finally {
-      setAiLoading(false)
+      setAiLoading(false); setAiProgress('')
     }
   }
 
@@ -780,7 +784,7 @@ function MonthlyReport({ rows, onClose }) {
               style={{ background:'linear-gradient(135deg,rgba(99,102,241,0.12),rgba(139,92,246,0.12))',
                        color:'#7C3AED', border:'1px solid rgba(139,92,246,0.2)' }}>
               {aiLoading
-                ? <><Loader2 className="w-4 h-4 animate-spin" />AI 生成中…</>
+                ? <><Loader2 className="w-4 h-4 animate-spin" />{aiProgress || 'AI 生成中…'}</>
                 : <><Sparkles className="w-4 h-4" />AI 一键总结</>}
             </button>
             {aiError && (

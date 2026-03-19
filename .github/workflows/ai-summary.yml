@@ -1,0 +1,46 @@
+name: AI月报总结
+
+on:
+  workflow_dispatch:
+    inputs:
+      year:
+        description: '年份（如 2026）'
+        required: true
+        type: string
+      month:
+        description: '月份（如 3）'
+        required: true
+        type: string
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 生成 AI 月报
+        run: node scripts/ai-summary.js
+        env:
+          YEAR:  ${{ inputs.year }}
+          MONTH: ${{ inputs.month }}
+          VITE_TEABLE_API_BASE:          ${{ secrets.VITE_TEABLE_API_BASE }}
+          VITE_TEABLE_TOKEN:             ${{ secrets.VITE_TEABLE_TOKEN }}
+          VITE_TEABLE_PROJECTS_TABLE_ID: ${{ secrets.VITE_TEABLE_PROJECTS_TABLE_ID }}
+          VITE_AI_API_BASE:              ${{ secrets.VITE_AI_API_BASE }}
+          VITE_AI_API_KEY:               ${{ secrets.VITE_AI_API_KEY }}
+          VITE_AI_MODEL:                 ${{ secrets.VITE_AI_MODEL }}
+
+      - name: 提交结果到仓库
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add ai-summaries/
+          git diff --staged --quiet || git commit -m "ai: ${{ inputs.year }}年${{ inputs.month }}月月报"
+          git push

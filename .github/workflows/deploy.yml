@@ -39,6 +39,8 @@ jobs:
           VITE_AI_API_KEY:               ${{ secrets.VITE_AI_API_KEY }}
           VITE_AI_API_BASE:              ${{ secrets.VITE_AI_API_BASE }}
           VITE_AI_MODEL:                 ${{ secrets.VITE_AI_MODEL }}
+          VITE_GITHUB_TOKEN:             ${{ secrets.VITE_GITHUB_TOKEN }}
+          VITE_GITHUB_REPO:              ${{ secrets.VITE_GITHUB_REPO }}
 
       - uses: actions/upload-pages-artifact@v3
         with:

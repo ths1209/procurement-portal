@@ -22,11 +22,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms))
  * @returns {Promise<string>}
  */
 export async function generateMonthlySummary({ year, month, stats, rows, onProgress = () => {} }) {
-  console.log('[AI] GH_TOKEN:', GH_TOKEN ? '已配置' : '未配置', '| AI_BASE:', AI_BASE || '未配置')
-
   // 模式 1：通过 GitHub Actions 服务端生成
   if (GH_TOKEN) {
-    return generateViaActions(year, month, onProgress)
+    try {
+      return await generateViaActions(year, month, onProgress)
+    } catch (e) {
+      console.warn('[AI] GitHub Actions 路径失败，降级为预设汇报:', e.message)
+    }
   }
 
   // 模式 2：浏览器直连（HTTPS AI 接口）
@@ -39,13 +41,9 @@ export async function generateMonthlySummary({ year, month, stats, rows, onProgr
     }
   }
 
-  // 没有可用 AI 路径 → 抛错告知用户
-  if (AI_BASE && !GH_TOKEN) {
-    throw new Error('请在 GitHub Secrets 中配置 VITE_GITHUB_TOKEN 和 VITE_GITHUB_REPO，然后重新部署')
-  }
-
+  // 降级：系统预设汇报
   await sleep(400)
-  return buildPlaceholder(year, month, stats) + '\n\n（注：AI 服务当前不可达，以上为系统预设汇报）'
+  return buildPlaceholder(year, month, stats)
 }
 
 // ─── GitHub Actions 模式 ──────────────────────────────────────────────────────

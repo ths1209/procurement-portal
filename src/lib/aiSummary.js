@@ -54,19 +54,26 @@ ${rowLines}
     return buildPlaceholder(year, month, stats)
   }
 
-  const res = await fetch(`${AI_BASE}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${AI_KEY}`,
-    },
-    body: JSON.stringify({
-      model: AI_MODEL,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7,
-      max_tokens: 600,
-    }),
-  })
+  let res
+  try {
+    res = await fetch(`${AI_BASE}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${AI_KEY}`,
+      },
+      body: JSON.stringify({
+        model: AI_MODEL,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+        max_tokens: 600,
+      }),
+    })
+  } catch (e) {
+    // 网络不可达（Mixed Content / 内网服务 / 跨域等）→ 降级为占位内容
+    console.warn('[AI] 接口不可达，降级为占位内容:', e.message)
+    return buildPlaceholder(year, month, stats) + '\n\n（注：AI 服务当前不可达，以上为系统预设汇报）'
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))

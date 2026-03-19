@@ -15,11 +15,14 @@ const WEBHOOK = import.meta.env.VITE_SHUHUAN_WEBHOOK ?? ''
  * @param {string} jobId   接收人工号
  * @param {string} content 消息正文
  */
+/**
+ * @returns {Promise<{ok:boolean, msg:string}>}
+ */
 export async function sendNotify(jobId, content) {
-  if (!jobId) return
+  if (!jobId) return { ok: false, msg: '接收人工号为空' }
   if (!WEBHOOK) {
     console.log(`[数环通·未配置] 工号:${jobId}\n${content}`)
-    return
+    return { ok: false, msg: '数环通未配置' }
   }
   try {
     const res = await fetch(WEBHOOK, {
@@ -27,18 +30,23 @@ export async function sendNotify(jobId, content) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jobId, title: '采购运营门户通知', content }),
     })
-    if (!res.ok) console.warn('[数环通] 推送失败', res.status)
-    else console.log(`[数环通] 已推送 → 工号:${jobId}`)
+    if (!res.ok) {
+      console.warn('[数环通] 推送失败', res.status)
+      return { ok: false, msg: `推送失败 (${res.status})` }
+    }
+    console.log(`[数环通] 已推送 → 工号:${jobId}`)
+    return { ok: true, msg: `已推送至工号 ${jobId}` }
   } catch (e) {
     console.warn('[数环通] 推送异常:', e.message)
+    return { ok: false, msg: e.message }
   }
 }
 
 /** 项目审核通过通知 */
 export async function notifyApproved(project) {
-  if (!project.ownerJobId) return
+  if (!project.ownerJobId) return { ok: false, msg: '该项目未填写责任人工号' }
   const date = project.planDate ? project.planDate.slice(0, 10) : '未设置'
-  await sendNotify(
+  return sendNotify(
     project.ownerJobId,
     `【项目审核通过】您的项目「${project.task?.slice(0, 30)}」已审核通过。\n计划交付日期：${date}，请按期推进。`
   )

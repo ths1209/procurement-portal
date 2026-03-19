@@ -59,8 +59,14 @@ export default function Projects() {
         { by: profile?.email, action: status === '已审核' ? '审核通过' : '审核驳回', note: '' },
         row.history
       )
-      // 审核通过时触发数环通通知
-      if (status === '已审核') notifyApproved(row)
+      // 审核通过时触发数环通通知并给出反馈
+      if (status === '已审核') {
+        const result = await notifyApproved(row)
+        if (result) {
+          if (result.ok) alert(`✅ 审核通过\n数环通通知：${result.msg}`)
+          else alert(`✅ 审核通过\n⚠️ 数环通通知未发送：${result.msg}`)
+        }
+      }
       load()
     } catch(e) { alert('操作失败：'+e.message) }
   }

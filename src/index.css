@@ -1,0 +1,139 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── CSS 变量：颜色 token ──────────────────────────────────────────────────── */
+:root {
+  --bg:       #F0F4FF;
+  --surface:  #FFFFFF;
+  --surface2: #F5F7FF;
+  --border:   rgba(99,102,241,0.12);
+  --muted:    #64748B;
+  --text:     #0F172A;
+  --sidebar:  #0A0F1E;
+}
+.dark {
+  --bg:       #07091A;
+  --surface:  #0D1226;
+  --surface2: #131B35;
+  --border:   rgba(99,102,241,0.18);
+  --muted:    #475569;
+  --text:     #E2E8F0;
+  --sidebar:  #050810;
+}
+
+/* ── 全局基础 ───────────────────────────────────────────────────────────────── */
+@layer base {
+  *, *::before, *::after {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html, body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
+    background-color: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* 暗色网格背景纹理 */
+  .dark body {
+    background-image: radial-gradient(rgba(99,102,241,0.05) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+
+  /* 精致滚动条 */
+  ::-webkit-scrollbar       { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.22); border-radius: 8px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,0.42); }
+
+  ::selection { background: rgba(99,102,241,0.18); }
+
+  /* 主题色彩过渡（仅颜色、不含 transform，避免影响动画） */
+  * { transition: background-color 0.22s ease, border-color 0.22s ease, color 0.15s ease; }
+}
+
+/* ── 复用类 ─────────────────────────────────────────────────────────────────── */
+@layer components {
+  /* 标准卡片 */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+  }
+  .card {
+    transition: box-shadow 0.22s ease, border-color 0.22s ease, transform 0.22s cubic-bezier(0.22,1,0.36,1);
+  }
+  .card:hover {
+    border-color: rgba(99,102,241,0.28);
+    box-shadow: 0 4px 24px rgba(99,102,241,0.1), 0 1px 6px rgba(0,0,0,0.06);
+  }
+  .dark .card:hover {
+    box-shadow: 0 0 0 1px rgba(99,102,241,0.22), 0 8px 32px rgba(99,102,241,0.1);
+  }
+
+  /* 按钮点击 + 悬浮态 */
+  .press {
+    transition: transform 0.15s cubic-bezier(0.22,1,0.36,1), opacity 0.12s ease, box-shadow 0.18s ease;
+  }
+  .press:hover  { transform: translateY(-1px); }
+  .press:active { transform: scale(0.96) translateY(0); opacity: 0.8; }
+
+  /* 渐变文字 */
+  .gradient-text {
+    background: linear-gradient(135deg, #6366F1, #0EA5E9);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* 输入框 */
+  .field {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 14px;
+    color: var(--text);
+    transition: border-color 0.18s, box-shadow 0.18s, background 0.18s;
+  }
+  .field::placeholder { color: var(--muted); opacity: 0.65; }
+  .field:focus {
+    background: var(--surface);
+    border-color: #6366F1;
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
+    outline: none;
+  }
+
+  /* 工具卡片悬浮提升 */
+  .hover-lift {
+    transition: transform 0.24s cubic-bezier(0.22,1,0.36,1), box-shadow 0.24s ease;
+  }
+  .hover-lift:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(99,102,241,0.15), 0 4px 12px rgba(0,0,0,0.08);
+  }
+}
+
+/* ── 卡片交错动画 ─────────────────────────────────────────────────────────── */
+.stagger > * {
+  animation: fadeUp 0.32s cubic-bezier(0.22,1,0.36,1) both;
+}
+.stagger > *:nth-child(1)  { animation-delay: 0ms;   }
+.stagger > *:nth-child(2)  { animation-delay: 55ms;  }
+.stagger > *:nth-child(3)  { animation-delay: 110ms; }
+.stagger > *:nth-child(4)  { animation-delay: 165ms; }
+.stagger > *:nth-child(5)  { animation-delay: 220ms; }
+.stagger > *:nth-child(6)  { animation-delay: 275ms; }
+.stagger > *:nth-child(7)  { animation-delay: 330ms; }
+.stagger > *:nth-child(8)  { animation-delay: 385ms; }
+.stagger > *:nth-child(9)  { animation-delay: 440ms; }
+.stagger > *:nth-child(10) { animation-delay: 495ms; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

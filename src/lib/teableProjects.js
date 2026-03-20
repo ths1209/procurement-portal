@@ -147,6 +147,11 @@ export async function createProject(fields, who) {
  * @param {{ by:string, action:string, note?:string }} historyMeta - 操作人与动作描述
  * @param {Array} currentHistory - 当前历史数组（来自 row.history）
  */
+export async function deleteProject(recordId) {
+  if (!TID) throw new Error('未配置项目表')
+  await req(`/table/${TID}/record/${recordId}`, { method: 'DELETE' })
+}
+
 export async function updateProject(recordId, fields, historyMeta = null, currentHistory = []) {
   if (!TID) throw new Error('未配置项目表')
   const updates = { ...fields }

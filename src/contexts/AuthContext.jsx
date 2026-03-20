@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import bcrypt from 'bcryptjs'
-import { findUserByEmail, createUser } from '../lib/teable'
+import { findUserByEmail, createUser, updateUser } from '../lib/teable'
 
 const SESSION_KEY = 'pp_session'  // 存 { email } 到 localStorage
 
@@ -72,6 +72,16 @@ export function AuthProvider({ children }) {
     setUser(null)
   }
 
+  async function changePassword(currentPassword, newPassword) {
+    if (!user?.email) throw new Error('未登录')
+    const record = await findUserByEmail(user.email)
+    if (!record) throw new Error('用户不存在')
+    const match = await bcrypt.compare(currentPassword, record.passwordHash ?? '')
+    if (!match) throw new Error('当前密码错误')
+    const newHash = await bcrypt.hash(newPassword, 10)
+    await updateUser(record.uid, { passwordHash: newHash })
+  }
+
   // 手动刷新当前用户状态（ProtectedRoute 可调用）
   async function refreshUser() {
     if (!user?.email) return
@@ -81,7 +91,7 @@ export function AuthProvider({ children }) {
   }
 
   // profile 与 user 保持一致，兼容原有组件引用
-  const value = { user, profile: user, loading, login, register, logout, refreshUser }
+  const value = { user, profile: user, loading, login, register, logout, refreshUser, changePassword }
 
   return (
     <AuthContext.Provider value={value}>

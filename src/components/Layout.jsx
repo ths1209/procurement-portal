@@ -1,6 +1,7 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { LayoutDashboard, ClipboardList, Users, LogOut, Menu, X, Sun, Moon } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, Users, LogOut, Menu, X, Sun, Moon, KeyRound } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 
@@ -16,6 +17,7 @@ export default function Layout({ children }) {
   const navigate  = useNavigate()
   const location  = useLocation()
   const [open, setOpen] = useState(false)
+  const [pwOpen, setPwOpen] = useState(false)
   const isAdmin   = profile?.role === 'admin'
 
   function handleLogout() { logout(); navigate('/login', { replace: true }) }
@@ -98,6 +100,11 @@ export default function Layout({ children }) {
             {dark ? <Sun className="w-3 h-3" /> : <Moon className="w-3 h-3" />}
             {dark ? '浅色' : '深色'}
           </button>
+          <button onClick={() => setPwOpen(true)}
+            className="press flex items-center justify-center py-1.5 px-2 rounded-lg text-white/40 hover:text-white/70 transition-colors"
+            style={{ background: 'rgba(255,255,255,0.05)' }} title="修改密码">
+            <KeyRound className="w-3 h-3" />
+          </button>
           <button onClick={handleLogout}
             className="press flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-medium text-white/40 hover:text-red-400/70 transition-colors"
             style={{ background: 'rgba(255,255,255,0.05)' }}>
@@ -110,6 +117,7 @@ export default function Layout({ children }) {
 
   return (
     <div className="min-h-screen flex" style={{ background: 'var(--bg)' }}>
+      {pwOpen && <ChangePasswordModal onClose={() => setPwOpen(false)} />}
       {/* 遮罩 */}
       {open && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-20 lg:hidden animate-fade-in"
@@ -147,5 +155,77 @@ export default function Layout({ children }) {
         </main>
       </div>
     </div>
+  )
+}
+
+// ─── 修改密码弹窗 ──────────────────────────────────────────────────────────────
+function ChangePasswordModal({ onClose }) {
+  const { changePassword } = useAuth()
+  const [cur,    setCur]    = useState('')
+  const [next,   setNext]   = useState('')
+  const [confirm,setConfirm]= useState('')
+  const [saving, setSaving] = useState(false)
+  const [err,    setErr]    = useState('')
+  const [ok,     setOk]     = useState(false)
+
+  async function submit(e) {
+    e.preventDefault()
+    if (next !== confirm) { setErr('两次输入的新密码不一致'); return }
+    if (next.length < 6)  { setErr('新密码至少 6 位'); return }
+    setSaving(true); setErr('')
+    try {
+      await changePassword(cur, next)
+      setOk(true)
+      setTimeout(onClose, 1500)
+    } catch(e) { setErr(e.message) } finally { setSaving(false) }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[300] overflow-y-auto animate-fade-in"
+      style={{ background:'rgba(0,0,0,0.5)', backdropFilter:'blur(8px)' }}
+      onClick={onClose}>
+      <div className="flex min-h-full items-center justify-center p-4" onClick={e => e.stopPropagation()}>
+        <div className="w-full max-w-sm rounded-2xl shadow-2xl animate-scale-in"
+          style={{ background:'var(--surface)', border:'1px solid var(--border)' }}>
+          <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom:'1px solid var(--border)' }}>
+            <div className="flex items-center gap-2">
+              <KeyRound className="w-4 h-4" style={{ color:'#6366F1' }} />
+              <h3 className="font-semibold text-[15px]" style={{ color:'var(--text)' }}>修改密码</h3>
+            </div>
+            <button onClick={onClose} className="press w-7 h-7 flex items-center justify-center rounded-xl"
+              style={{ background:'var(--surface2)', color:'var(--muted)' }}>
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          {ok ? (
+            <div className="p-8 text-center">
+              <div className="text-3xl mb-2">✅</div>
+              <p className="text-sm font-medium" style={{ color:'var(--text)' }}>密码修改成功</p>
+            </div>
+          ) : (
+            <form onSubmit={submit} className="p-5 space-y-4">
+              {[['当前密码', cur, setCur], ['新密码（至少6位）', next, setNext], ['确认新密码', confirm, setConfirm]].map(([label, val, set]) => (
+                <div key={label}>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color:'var(--text)', opacity:0.65 }}>{label}</label>
+                  <input type="password" required value={val} onChange={e => set(e.target.value)} className="field" />
+                </div>
+              ))}
+              {err && <p className="text-xs text-red-500">{err}</p>}
+              <div className="flex gap-2.5 pt-1">
+                <button type="button" onClick={onClose}
+                  className="press flex-1 py-2.5 text-sm font-semibold rounded-xl"
+                  style={{ background:'var(--surface2)', color:'var(--muted)' }}>取消</button>
+                <button type="submit" disabled={saving}
+                  className="press flex-1 py-2.5 text-sm font-semibold text-white rounded-xl disabled:opacity-60"
+                  style={{ background:'#6366F1' }}>
+                  {saving ? '保存中…' : '确认修改'}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
   )
 }

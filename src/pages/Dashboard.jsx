@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Plus, ExternalLink, Eye, X, BarChart3, Package, Download, Upload } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
-import { listFileTools, createFileTool, deleteFileTool, trackDownload, isToolsConfigured } from '../lib/teableTools'
+import { listAllTools, createFileTool, createUrlTool, createDashItem, deleteFileTool, trackDownload, isToolsConfigured } from '../lib/teableTools'
 
 const GRADS = ['#6366F1','#0EA5E9','#10B981','#F59E0B','#8B5CF6','#14B8A6','#F97316','#EC4899']
 
@@ -39,35 +39,44 @@ function useLocal(key, def) {
 export default function Dashboard() {
   const { profile } = useAuth()
   const isAdmin = profile?.role === 'admin'
+  // localStorage 仅在 Teable 未配置时作为本地回退
   const ai   = useLocal('pp_ai',   DEFAULT_AI)
   const dash = useLocal('pp_dash', DEFAULT_DASH)
+  const [teableData, setTeableData] = useState({ fileTools:[], urlTools:[], dashItems:[] })
   const [addGroup,  setAddGroup]  = useState(null)
   const [preview,   setPreview]   = useState(null)
-  const [fileTools, setFileTools] = useState([])
 
-  useEffect(() => { loadFileTools() }, [])
+  const configured = isToolsConfigured()
+  const fileTools = configured ? teableData.fileTools : []
+  const urlTools  = configured ? teableData.urlTools  : ai.items
+  const dashItems = configured ? teableData.dashItems : dash.items
 
-  async function loadFileTools() {
-    if (!isToolsConfigured()) return
-    try { setFileTools(await listFileTools()) } catch(e) { console.error('[teableTools]', e) }
+  useEffect(() => { loadTools() }, [])
+
+  async function loadTools() {
+    if (!configured) return
+    try { setTeableData(await listAllTools()) } catch(e) { console.error('[teableTools]', e) }
   }
 
   async function handleDownload(tool) {
     if (!tool.fileUrl) return
     window.open(tool.fileUrl, '_blank')
     const next = (tool.downloads || 0) + 1
-    setFileTools(prev => prev.map(t => t._id === tool._id ? { ...t, downloads: next } : t))
+    setTeableData(prev => ({
+      ...prev,
+      fileTools: prev.fileTools.map(t => t._id === tool._id ? { ...t, downloads: next } : t),
+    }))
     trackDownload(tool._id, tool.downloads)
   }
 
-  async function handleDelFile(id) {
-    try { await deleteFileTool(id); setFileTools(prev => prev.filter(t => t._id !== id)) }
+  async function handleDelTool(id) {
+    try { await deleteFileTool(id); loadTools() }
     catch(e) { alert('删除失败：' + e.message) }
   }
 
   const now = new Date()
   const date = now.toLocaleDateString('zh-CN', { month:'long', day:'numeric', weekday:'long' })
-  const totalTools = ai.items.length + fileTools.length
+  const totalTools = urlTools.length + fileTools.length
 
   return (
     <div className="space-y-6 animate-page-in">
@@ -106,12 +115,12 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           {GROUPS.map(group => (
             <GroupPanel key={group} group={group}
-              urlTools={ai.items.filter(t => (t.group ?? '采购部通用') === group)}
+              urlTools={urlTools.filter(t => (t.group ?? '采购部通用') === group)}
               fileTools={fileTools.filter(t => t.group === group)}
               isAdmin={isAdmin}
               onAdd={() => setAddGroup(group)}
-              onDelUrl={id => ai.del(id)}
-              onDelFile={handleDelFile}
+              onDelUrl={id => configured ? handleDelTool(id) : ai.del(id)}
+              onDelFile={handleDelTool}
               onDownload={handleDownload}
             />
           ))}
@@ -124,7 +133,12 @@ export default function Dashboard() {
         icon={<BarChart3 className="w-4 h-4" />} iconBg="rgba(14,165,233,0.12)" iconClr="#0EA5E9"
         onAdd={() => setAddGroup('__dash__')}>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 stagger">
-          {dash.items.map(d => <DashCard key={d.id} item={d} isAdmin={isAdmin} onDel={() => dash.del(d.id)} onPrev={() => setPreview(d.url)} />)}
+          {dashItems.map((d, idx) => (
+            <DashCard key={d._id || d.id} item={{ ...d, g: d.g ?? (idx % GRADS.length) }}
+              isAdmin={isAdmin}
+              onDel={() => configured ? handleDelTool(d._id) : dash.del(d.id)}
+              onPrev={() => setPreview(d.url || d.fileUrl)} />
+          ))}
           <AddCard label="添加看板" onClick={() => setAddGroup('__dash__')} />
         </div>
       </Section>
@@ -132,10 +146,14 @@ export default function Dashboard() {
       {/* 添加工具弹窗 */}
       {addGroup && addGroup !== '__dash__' && (
         <AddToolModal group={addGroup} onClose={() => setAddGroup(null)}
-          onSaveUrl={x => { ai.add(x); setAddGroup(null) }}
+          onSaveUrl={async x => {
+            if (configured) { await createUrlTool(x, profile?.email); await loadTools() }
+            else { ai.add(x) }
+            setAddGroup(null)
+          }}
           onSaveFile={async meta => {
             await createFileTool(meta, profile?.email)
-            await loadFileTools()
+            await loadTools()
             setAddGroup(null)
           }}
         />
@@ -144,7 +162,11 @@ export default function Dashboard() {
       {/* 添加看板弹窗 */}
       {addGroup === '__dash__' && (
         <AddDashModal onClose={() => setAddGroup(null)}
-          onSave={x => { dash.add({ ...x, g: dash.items.length % GRADS.length }); setAddGroup(null) }} />
+          onSave={async x => {
+            if (configured) { await createDashItem(x, profile?.email); await loadTools() }
+            else { dash.add({ ...x, g: dash.items.length % GRADS.length }) }
+            setAddGroup(null)
+          }} />
       )}
 
       {preview && <PreviewModal url={preview} onClose={() => setPreview(null)} />}
@@ -209,8 +231,8 @@ function GroupPanel({ group, urlTools, fileTools, isAdmin, onAdd, onDelUrl, onDe
       {/* 工具列表 */}
       <div>
         {urlTools.map(t => (
-          <ToolRow key={t.id} icon={t.icon} name={t.name} desc={t.desc}
-            isAdmin={isAdmin} onDel={() => onDelUrl(t.id)}
+          <ToolRow key={t._id || t.id} icon={t.icon} name={t.name} desc={t.desc}
+            isAdmin={isAdmin} onDel={() => onDelUrl(t._id || t.id)}
             action={
               <a href={t.url} target="_blank" rel="noopener noreferrer"
                 className="press flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-white shrink-0"

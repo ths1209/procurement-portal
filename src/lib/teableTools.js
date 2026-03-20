@@ -12,6 +12,8 @@ export const FT = {
   fileName:   '文件名',
   downloads:  '下载量',
   uploadedBy: '上传人',
+  toolType:   '类型',        // 文件工具 | 链接工具 | 数据看板
+  toolUrl:    '工具链接',    // 链接工具/看板的目标URL
 }
 
 const FIELD_DEFS = [
@@ -26,6 +28,10 @@ const FIELD_DEFS = [
   { name: FT.fileName,   type: 'singleLineText' },
   { name: FT.downloads,  type: 'number', options: { precision: 0 } },
   { name: FT.uploadedBy, type: 'singleLineText' },
+  { name: FT.toolType,   type: 'singleSelect', options: { choices: [
+    { name: '文件工具' }, { name: '链接工具' }, { name: '数据看板' },
+  ]}},
+  { name: FT.toolUrl,    type: 'singleLineText' },
 ]
 
 // 缓存附件字段 ID（避免每次上传都查询字段列表）
@@ -60,6 +66,8 @@ function normTool(r) {
     downloads:  f[FT.downloads]  ?? 0,
     uploadedBy: f[FT.uploadedBy] ?? '',
     hasFile:    !!att,
+    toolType:   f[FT.toolType]  ?? '文件工具',
+    url:        f[FT.toolUrl]   ?? '',
   }
 }
 
@@ -101,7 +109,64 @@ async function getAttachmentFieldId() {
 export async function listFileTools() {
   if (!TID) return []
   const data = await req(`/table/${TID}/record?take=500&fieldKeyType=name`)
-  return (data.records ?? []).map(normTool)
+  return (data.records ?? []).map(normTool).filter(t => !t.toolType || t.toolType === '文件工具')
+}
+
+/** 一次性拉取所有类型工具，按类型分组返回 */
+export async function listAllTools() {
+  if (!TID) return { fileTools: [], urlTools: [], dashItems: [] }
+  const data = await req(`/table/${TID}/record?take=500&fieldKeyType=name`)
+  const all = (data.records ?? []).map(normTool)
+  return {
+    fileTools: all.filter(t => !t.toolType || t.toolType === '文件工具'),
+    urlTools:  all.filter(t => t.toolType === '链接工具'),
+    dashItems: all.filter(t => t.toolType === '数据看板'),
+  }
+}
+
+export async function createUrlTool({ name, icon, desc, group, url }, addedBy) {
+  if (!TID) throw new Error('未配置工具表')
+  const fields = clean({
+    [FT.name]:     name,
+    [FT.icon]:     icon  || '🔗',
+    [FT.desc]:     desc  || '',
+    [FT.group]:    group || '采购部通用',
+    [FT.toolType]: '链接工具',
+    [FT.toolUrl]:  url   || '',
+    [FT.uploadedBy]: addedBy || '',
+  })
+  let data
+  try {
+    data = await req(`/table/${TID}/record`, { method: 'POST', body: JSON.stringify({ records: [{ fields }] }) })
+  } catch (e) {
+    if (e.message?.includes('not found')) {
+      await ensureToolsFields()
+      data = await req(`/table/${TID}/record`, { method: 'POST', body: JSON.stringify({ records: [{ fields }] }) })
+    } else { throw e }
+  }
+  return normTool(data.records?.[0])
+}
+
+export async function createDashItem({ name, icon, desc, url }, addedBy) {
+  if (!TID) throw new Error('未配置工具表')
+  const fields = clean({
+    [FT.name]:     name,
+    [FT.icon]:     icon || '📊',
+    [FT.desc]:     desc || '',
+    [FT.toolType]: '数据看板',
+    [FT.toolUrl]:  url  || '',
+    [FT.uploadedBy]: addedBy || '',
+  })
+  let data
+  try {
+    data = await req(`/table/${TID}/record`, { method: 'POST', body: JSON.stringify({ records: [{ fields }] }) })
+  } catch (e) {
+    if (e.message?.includes('not found')) {
+      await ensureToolsFields()
+      data = await req(`/table/${TID}/record`, { method: 'POST', body: JSON.stringify({ records: [{ fields }] }) })
+    } else { throw e }
+  }
+  return normTool(data.records?.[0])
 }
 
 /** 上传文件到指定记录的附件字段 */

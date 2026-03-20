@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Search, RefreshCw, Plus, ChevronDown, ExternalLink, Pencil, CheckCircle, XCircle, ChevronRight, History, FileText, Copy, Check, Sparkles, Loader2 } from 'lucide-react'
-import { listProjects, createProject, updateProject, isConfigured, F } from '../lib/teableProjects'
+import { Search, RefreshCw, Plus, ChevronDown, ExternalLink, Pencil, CheckCircle, XCircle, ChevronRight, History, FileText, Copy, Check, Sparkles, Loader2, Trash2 } from 'lucide-react'
+import { listProjects, createProject, updateProject, deleteProject, isConfigured, F } from '../lib/teableProjects'
 import { notifyApproved } from '../lib/notify'
 import { generateMonthlySummary } from '../lib/aiSummary'
 import { useAuth } from '../contexts/AuthContext'
@@ -43,12 +43,19 @@ export default function Projects() {
   const [historyRow, setHistoryRow] = useState(null)
   const [reportOpen, setReportOpen] = useState(false)
   const [showGantt, setShowGantt] = useState(true)
+  const [ganttOrg, setGanttOrg] = useState('全部')
 
   useEffect(() => { load() }, [])
 
   async function load() {
     setLoading(true); setError(null)
     try { setRows(await listProjects()) } catch(e) { setError(e.message) } finally { setLoading(false) }
+  }
+
+  async function handleDelete(row) {
+    if (!window.confirm(`确认删除项目「${row.task?.slice(0, 20) || row.id}」？此操作不可撤销。`)) return
+    try { await deleteProject(row._id); load() }
+    catch(e) { alert('删除失败：' + e.message) }
   }
 
   async function handleReview(row, status) {
@@ -134,7 +141,7 @@ export default function Projects() {
             <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${showGantt?'rotate-90':''}`}
               style={{ color:'var(--muted)' }} />
           </button>
-          {showGantt && <GanttChart rows={rows} />}
+          {showGantt && <GanttChart rows={rows} ganttOrg={ganttOrg} setGanttOrg={setGanttOrg} />}
         </div>
       )}
 
@@ -220,6 +227,7 @@ export default function Projects() {
                     open={expanded===row._id} onToggle={() => setExp(expanded===row._id ? null : row._id)}
                     onEdit={() => setFormRow(row)}
                     onReview={handleReview}
+                    onDelete={handleDelete}
                     onHistory={() => setHistoryRow(row)} />
                 ))}
               </tbody>
@@ -260,11 +268,12 @@ export default function Projects() {
 }
 
 // ─── 甘特图 ────────────────────────────────────────────────────────────────────
-function GanttChart({ rows }) {
+function GanttChart({ rows, ganttOrg = '全部', setGanttOrg }) {
   const today = new Date(); today.setHours(0,0,0,0)
   const winStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
   const winEnd   = new Date(today.getFullYear(), today.getMonth() + 4, 0)
   const totalMs  = winEnd - winStart
+  const filteredRows = ganttOrg === '全部' ? rows : rows.filter(r => r.org === ganttOrg)
 
   function toPct(dateStr) {
     if (!dateStr) return null
@@ -280,7 +289,7 @@ function GanttChart({ rows }) {
   }
 
   const todayPct = toPct(today)
-  const items = rows
+  const items = filteredRows
     .filter(r => r.startDate)
     .sort((a,b) => new Date(a.startDate) - new Date(b.startDate))
     .slice(0, 14)
@@ -292,6 +301,23 @@ function GanttChart({ rows }) {
   const LABEL_W = 72
   return (
     <div className="px-4 pt-2 pb-4">
+      {/* 组织筛选 */}
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {['全部', ...ORG_OPTS].map(o => {
+          const active = ganttOrg === o
+          const cfg = ORG_CFG[o]
+          return (
+            <button key={o} onClick={() => setGanttOrg(o)}
+              className="press px-2.5 py-1 rounded-full text-[11px] font-semibold"
+              style={active
+                ? { background: cfg?.color ?? '#6366F1', color:'#fff' }
+                : { background:'var(--surface2)', color:'var(--muted)', border:'1px solid var(--border)' }
+              }>
+              {o === '全部' ? '全部' : o}
+            </button>
+          )
+        })}
+      </div>
       <div className="flex flex-wrap gap-3 mb-3">
         {Object.entries(STATUS_BAR_CLR).map(([s,c]) => (
           <span key={s} className="flex items-center gap-1.5 text-[10px]" style={{ color:'var(--muted)' }}>
@@ -346,7 +372,7 @@ function GanttChart({ rows }) {
 }
 
 // ─── 表格行 ────────────────────────────────────────────────────────────────────
-function Row({ row, isAdmin, userEmail, open, onToggle, onEdit, onReview, onHistory }) {
+function Row({ row, isAdmin, userEmail, open, onToggle, onEdit, onReview, onDelete, onHistory }) {
   const sc  = STATUS_CFG[row.status]  ?? { bg:'rgba(100,116,139,0.1)', color:'#64748B', dot:'#94A3B8' }
   const rc  = REVIEW_CFG[row.reviewStatus] ?? REVIEW_CFG['待审核']
   const oc  = ORG_CFG[row.org]
@@ -441,6 +467,14 @@ function Row({ row, isAdmin, userEmail, open, onToggle, onEdit, onReview, onHist
                   <XCircle className="w-3 h-3" /> 驳回
                 </button>
               </>
+            )}
+            {isAdmin && (
+              <button onClick={() => onDelete(row)}
+                className="press flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-medium"
+                style={{ background:'rgba(244,63,94,0.08)', color:'#E11D48', border:'1px solid rgba(244,63,94,0.15)' }}
+                title="删除项目">
+                <Trash2 className="w-3 h-3" />
+              </button>
             )}
           </div>
         </td>

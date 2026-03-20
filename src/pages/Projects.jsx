@@ -43,7 +43,6 @@ export default function Projects() {
   const [historyRow, setHistoryRow] = useState(null)
   const [reportOpen, setReportOpen] = useState(false)
   const [showGantt, setShowGantt] = useState(true)
-  const [ganttOrg, setGanttOrg] = useState('全部')
 
   useEffect(() => { load() }, [])
 
@@ -141,27 +140,9 @@ export default function Projects() {
             <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${showGantt?'rotate-90':''}`}
               style={{ color:'var(--muted)' }} />
           </button>
-          {showGantt && <GanttChart rows={rows} ganttOrg={ganttOrg} setGanttOrg={setGanttOrg} />}
+          {showGantt && <GanttChart rows={rows} orgFilter={orgFilter} setOrgFilter={setOrgFilter} />}
         </div>
       )}
-
-      {/* 采购组织筛选 */}
-      <div className="flex flex-wrap gap-2">
-        {['全部', ...ORG_OPTS].map(o => {
-          const active = orgFilter === o
-          const cfg = ORG_CFG[o]
-          return (
-            <button key={o} onClick={() => setOrgFilter(o)}
-              className="press flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold"
-              style={active
-                ? { background: cfg?.color ?? '#6366F1', color:'#fff' }
-                : { background:'var(--surface)', color:'var(--text)', border:'1px solid var(--border)' }
-              }>
-              {o === '全部' ? '🏢 全部组织' : o}
-            </button>
-          )
-        })}
-      </div>
 
       {/* 完成状态筛选 */}
       <div className="flex flex-wrap gap-2">
@@ -268,57 +249,180 @@ export default function Projects() {
 }
 
 // ─── 甘特图 ────────────────────────────────────────────────────────────────────
-function GanttChart({ rows, ganttOrg = '全部', setGanttOrg }) {
+function GanttChart({ rows, orgFilter = '全部', setOrgFilter }) {
   const today = new Date(); today.setHours(0,0,0,0)
+  // 窗口：前1月 ~ 后6月
   const winStart = new Date(today.getFullYear(), today.getMonth() - 1, 1)
-  const winEnd   = new Date(today.getFullYear(), today.getMonth() + 4, 0)
+  const winEnd   = new Date(today.getFullYear(), today.getMonth() + 7, 0)
   const totalMs  = winEnd - winStart
-  const filteredRows = ganttOrg === '全部' ? rows : rows.filter(r => r.org === ganttOrg)
 
-  function toPct(dateStr) {
-    if (!dateStr) return null
-    const ms = new Date(dateStr) - winStart
-    return Math.max(0, Math.min(100, (ms / totalMs) * 100))
+  function toPct(d) {
+    if (!d) return null
+    const dt = d instanceof Date ? d : new Date(d)
+    return Math.max(0, Math.min(100, (dt - winStart) / totalMs * 100))
   }
 
+  // 财年 = Q所在年+1（Q1=Mar-May, Q2=Jun-Aug, Q3=Sep-Nov, Q4=Dec-Feb）
+  // Q按季度月份：3→Q1,6→Q2,9→Q3,12→Q4
+  function getQSegments() {
+    const segs = []
+    const sy = winStart.getFullYear(), sm = winStart.getMonth() + 1
+    // 找包含winStart的季度起始月
+    let qm = sm < 3 ? 12 : sm < 6 ? 3 : sm < 9 ? 6 : sm < 12 ? 9 : 12
+    let qy = (sm < 3) ? sy - 1 : sy
+    while (true) {
+      const qStart = new Date(qy, qm - 1, 1)
+      let nm = qm + 3, ny = qy
+      if (nm > 12) { nm -= 12; ny++ }
+      const qEnd = new Date(ny, nm - 1, 1)
+      if (qStart >= winEnd) break
+      if (qEnd > winStart) {
+        segs.push({ start: qStart, end: qEnd, q: {3:1,6:2,9:3,12:4}[qm], fy: qy + 1 })
+      }
+      qm = nm; qy = ny
+    }
+    return segs
+  }
+
+  const segments = getQSegments()
+
+  // 财年分组（用于FY标签行）
+  const fyGroups = []
+  segments.forEach(seg => {
+    const last = fyGroups[fyGroups.length - 1]
+    if (last && last.fy === seg.fy) last.end = seg.end
+    else fyGroups.push({ fy: seg.fy, start: seg.start, end: seg.end })
+  })
+
+  // 月份标签
   const months = []
   let m = new Date(winStart.getFullYear(), winStart.getMonth(), 1)
   while (m <= winEnd) {
     months.push({ pct: toPct(m), label: `${m.getMonth()+1}月` })
-    m = new Date(m.getFullYear(), m.getMonth()+1, 1)
+    m = new Date(m.getFullYear(), m.getMonth() + 1, 1)
   }
 
   const todayPct = toPct(today)
+  const Q_COLORS = { 1:'#6366F1', 2:'#0EA5E9', 3:'#10B981', 4:'#F59E0B' }
+
+  // 按组织筛选甘特数据
+  const filteredRows = orgFilter === '全部' ? rows : rows.filter(r => r.org === orgFilter)
   const items = filteredRows
     .filter(r => r.startDate)
     .sort((a,b) => new Date(a.startDate) - new Date(b.startDate))
     .slice(0, 14)
 
-  if (items.length === 0) return (
-    <div className="px-4 py-6 text-center text-sm" style={{ color:'var(--muted)' }}>暂无项目日期数据</div>
-  )
-
   const LABEL_W = 72
   return (
-    <div className="px-4 pt-2 pb-4">
-      {/* 组织筛选 */}
+    <div className="px-4 pt-3 pb-4">
+
+      {/* 组织筛选（合并到甘特图内，同时控制下方表格） */}
       <div className="flex flex-wrap gap-1.5 mb-3">
         {['全部', ...ORG_OPTS].map(o => {
-          const active = ganttOrg === o
+          const active = orgFilter === o
           const cfg = ORG_CFG[o]
           return (
-            <button key={o} onClick={() => setGanttOrg(o)}
-              className="press px-2.5 py-1 rounded-full text-[11px] font-semibold"
+            <button key={o} onClick={() => setOrgFilter(o)}
+              className="press px-3 py-1 rounded-full text-[11px] font-semibold"
               style={active
                 ? { background: cfg?.color ?? '#6366F1', color:'#fff' }
                 : { background:'var(--surface2)', color:'var(--muted)', border:'1px solid var(--border)' }
               }>
-              {o === '全部' ? '全部' : o}
+              {o === '全部' ? '🏢 全部' : o}
             </button>
           )
         })}
       </div>
-      <div className="flex flex-wrap gap-3 mb-3">
+
+      {/* 财年 FY 行 */}
+      <div className="flex" style={{ paddingLeft: LABEL_W }}>
+        <div className="flex-1 relative" style={{ height:18 }}>
+          {fyGroups.map((g, i) => {
+            const l = toPct(g.start), r = toPct(g.end > winEnd ? winEnd : g.end)
+            return (
+              <div key={i} className="absolute top-0 h-full flex items-center overflow-hidden"
+                style={{ left:`${l}%`, width:`${r - l}%`,
+                  borderLeft: i > 0 ? '1px solid var(--border)' : 'none' }}>
+                <span className="text-[10px] font-bold pl-1.5 whitespace-nowrap"
+                  style={{ color:'#6366F1', opacity:0.85 }}>FY{g.fy % 100}</span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* 季度 Q 行 */}
+      <div className="flex mb-1" style={{ paddingLeft: LABEL_W }}>
+        <div className="flex-1 relative rounded overflow-hidden" style={{ height:16, background:'var(--surface2)' }}>
+          {segments.map((seg, i) => {
+            const l = toPct(seg.start), r = toPct(seg.end > winEnd ? winEnd : seg.end)
+            const c = Q_COLORS[seg.q]
+            return (
+              <div key={i} className="absolute top-0 h-full flex items-center justify-center overflow-hidden"
+                style={{ left:`${l}%`, width:`${r - l}%`, background:`${c}20`,
+                  borderLeft: i > 0 ? '1px solid rgba(128,128,128,0.15)' : 'none' }}>
+                <span className="text-[10px] font-bold" style={{ color: c }}>Q{seg.q}</span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* 月份行 */}
+      <div className="flex mb-2" style={{ paddingLeft: LABEL_W }}>
+        <div className="flex-1 relative" style={{ height:14 }}>
+          {months.map((mo, i) => (
+            <span key={i} className="absolute text-[9px]"
+              style={{ left:`${mo.pct}%`, transform:'translateX(-50%)', color:'var(--muted)', opacity:0.6 }}>
+              {mo.label}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* 甘特条目 / 空状态（不影响上方筛选器） */}
+      {items.length === 0 ? (
+        <div className="flex items-center justify-center py-5 text-[12px] rounded-xl"
+          style={{ color:'var(--muted)', background:'var(--surface2)' }}>
+          该组织暂无可显示的项目日期数据
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {items.map(row => {
+            const s = toPct(row.startDate)
+            const rawEnd = row.actualDate || row.planDate
+            const fallbackEnd = new Date(new Date(row.startDate).getTime() + 14*24*3600*1000)
+            const e = toPct(rawEnd || fallbackEnd)
+            const clr = STATUS_BAR_CLR[row.status] || '#94A3B8'
+            const left  = Math.min(s, e ?? s)
+            const width = Math.max(Math.abs((e ?? s) - s), 0.8)
+            return (
+              <div key={row._id} className="flex items-center" style={{ height:22 }}>
+                <div className="text-[10px] truncate text-right pr-2 shrink-0"
+                  style={{ width:LABEL_W, color:'var(--muted)' }} title={row.task}>
+                  {row.id || row.task?.slice(0,6) || '—'}
+                </div>
+                <div className="flex-1 relative h-4 rounded" style={{ background:'var(--surface2)' }}>
+                  {/* Q 分割线 */}
+                  {segments.map((seg, i) => (
+                    <div key={i} className="absolute top-0 bottom-0 w-px"
+                      style={{ left:`${toPct(seg.start)}%`, background:`${Q_COLORS[seg.q]}40`, zIndex:1 }} />
+                  ))}
+                  {/* 今日线 */}
+                  <div className="absolute top-0 bottom-0 w-0.5"
+                    style={{ left:`${todayPct}%`, background:'#6366F1', opacity:0.6, zIndex:2 }} />
+                  {/* 进度条 */}
+                  <div className="absolute top-1 h-2 rounded-sm"
+                    style={{ left:`${left}%`, width:`${width}%`, background:clr, opacity:0.8, zIndex:1 }} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* 图例 */}
+      <div className="flex flex-wrap gap-3 mt-3">
         {Object.entries(STATUS_BAR_CLR).map(([s,c]) => (
           <span key={s} className="flex items-center gap-1.5 text-[10px]" style={{ color:'var(--muted)' }}>
             <span className="w-2.5 h-2 rounded-sm inline-block" style={{ background:c, opacity:0.75 }} />{s}
@@ -327,45 +431,6 @@ function GanttChart({ rows, ganttOrg = '全部', setGanttOrg }) {
         <span className="flex items-center gap-1.5 text-[10px]" style={{ color:'var(--muted)' }}>
           <span className="inline-block w-px h-3 border-l-2 border-dashed" style={{ borderColor:'#6366F1', opacity:0.6 }} />今日
         </span>
-      </div>
-      <div className="flex mb-1" style={{ paddingLeft: LABEL_W }}>
-        <div className="flex-1 relative h-4">
-          {months.map((mo,i) => (
-            <span key={i} className="absolute text-[10px] font-medium"
-              style={{ left:`${mo.pct}%`, transform:'translateX(-50%)', color:'var(--muted)' }}>
-              {mo.label}
-            </span>
-          ))}
-        </div>
-      </div>
-      <div className="space-y-1.5">
-        {items.map(row => {
-          const s = toPct(row.startDate)
-          const rawEnd = row.actualDate || row.planDate
-          const fallbackEnd = new Date(new Date(row.startDate).getTime() + 14*24*3600*1000)
-          const e = toPct(rawEnd || fallbackEnd)
-          const clr = STATUS_BAR_CLR[row.status] || '#94A3B8'
-          const left  = Math.min(s, e ?? s)
-          const width = Math.max(Math.abs((e??s) - s), 0.8)
-          return (
-            <div key={row._id} className="flex items-center gap-0" style={{ height:22 }}>
-              <div className="text-[10px] truncate text-right pr-2 shrink-0"
-                style={{ width:LABEL_W, color:'var(--muted)' }} title={row.task}>
-                {row.id || row.task?.slice(0,6) || '—'}
-              </div>
-              <div className="flex-1 relative h-4 rounded" style={{ background:'var(--surface2)' }}>
-                {months.map((mo,i) => (
-                  <div key={i} className="absolute top-0 bottom-0 w-px"
-                    style={{ left:`${mo.pct}%`, background:'var(--border)' }} />
-                ))}
-                <div className="absolute top-0 bottom-0 w-0.5"
-                  style={{ left:`${todayPct}%`, background:'#6366F1', opacity:0.55, zIndex:2 }} />
-                <div className="absolute top-1 h-2 rounded-sm"
-                  style={{ left:`${left}%`, width:`${width}%`, background:clr, opacity:0.8, zIndex:1 }} />
-              </div>
-            </div>
-          )
-        })}
       </div>
     </div>
   )

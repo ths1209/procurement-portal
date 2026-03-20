@@ -4,22 +4,40 @@
 
 /* ── CSS 变量：颜色 token ──────────────────────────────────────────────────── */
 :root {
-  --bg:       #F0F4FF;
+  --bg:       #F4F4F5;
   --surface:  #FFFFFF;
-  --surface2: #F5F7FF;
-  --border:   rgba(99,102,241,0.12);
-  --muted:    #64748B;
-  --text:     #0F172A;
-  --sidebar:  #0A0F1E;
+  --surface2: #F4F4F5;
+  --border:   rgba(0,0,0,0.08);
+  --muted:    #71717A;
+  --text:     #18181B;
+
+  /* 侧边栏（浅色） */
+  --sb-bg:          #FFFFFF;
+  --sb-text:        #52525B;
+  --sb-text-strong: #18181B;
+  --sb-muted:       #A1A1AA;
+  --sb-hover:       rgba(0,0,0,0.04);
+  --sb-active:      rgba(99,102,241,0.08);
+  --sb-active-text: #6366F1;
+  --sb-sep:         rgba(0,0,0,0.07);
 }
 .dark {
-  --bg:       #07091A;
-  --surface:  #0D1226;
-  --surface2: #131B35;
-  --border:   rgba(99,102,241,0.18);
-  --muted:    #475569;
-  --text:     #E2E8F0;
-  --sidebar:  #050810;
+  --bg:       #16161A;
+  --surface:  #1F1F24;
+  --surface2: #26262C;
+  --border:   rgba(255,255,255,0.09);
+  --muted:    #71717A;
+  --text:     #F0F0F2;
+
+  /* 侧边栏（深色） */
+  --sb-bg:          #0A0A0B;
+  --sb-text:        rgba(255,255,255,0.42);
+  --sb-text-strong: rgba(255,255,255,0.88);
+  --sb-muted:       rgba(255,255,255,0.2);
+  --sb-hover:       rgba(255,255,255,0.04);
+  --sb-active:      rgba(255,255,255,0.07);
+  --sb-active-text: rgba(255,255,255,0.9);
+  --sb-sep:         rgba(255,255,255,0.05);
 }
 
 /* ── 全局基础 ───────────────────────────────────────────────────────────────── */
@@ -37,19 +55,21 @@
     min-height: 100vh;
   }
 
-  /* 暗色网格背景纹理 */
+  /* 暗色点阵背景 */
   .dark body {
-    background-image: radial-gradient(rgba(99,102,241,0.05) 1px, transparent 1px);
-    background-size: 28px 28px;
+    background-image: radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px);
+    background-size: 24px 24px;
   }
 
   /* 精致滚动条 */
   ::-webkit-scrollbar       { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.22); border-radius: 8px; }
-  ::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,0.42); }
+  ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 8px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.22); }
+  .dark ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); }
+  .dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
 
-  ::selection { background: rgba(99,102,241,0.18); }
+  ::selection { background: rgba(99,102,241,0.15); }
 
   /* 主题色彩过渡（仅颜色、不含 transform，避免影响动画） */
   * { transition: background-color 0.22s ease, border-color 0.22s ease, color 0.15s ease; }
@@ -71,7 +91,7 @@
     box-shadow: 0 4px 24px rgba(99,102,241,0.1), 0 1px 6px rgba(0,0,0,0.06);
   }
   .dark .card:hover {
-    box-shadow: 0 0 0 1px rgba(99,102,241,0.22), 0 8px 32px rgba(99,102,241,0.1);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.1), 0 8px 32px rgba(0,0,0,0.4);
   }
 
   /* 按钮点击 + 悬浮态 */
@@ -107,6 +127,16 @@
     box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
     outline: none;
   }
+
+  /* 侧边栏导航项 */
+  .sb-nav-link { color: var(--sb-text); }
+  .sb-nav-link:hover { background: var(--sb-hover); color: var(--sb-active-text); }
+  .sb-nav-active { background: var(--sb-active) !important; color: var(--sb-active-text) !important; }
+
+  /* 侧边栏按钮 */
+  .sb-btn { background: var(--sb-hover) !important; color: var(--sb-text) !important; }
+  .sb-btn:hover { color: var(--sb-active-text) !important; }
+  .sb-btn-danger:hover { color: #F87171 !important; }
 
   /* 工具卡片悬浮提升 */
   .hover-lift {

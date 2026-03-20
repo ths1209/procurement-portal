@@ -26,7 +26,7 @@ export default function Layout({ children }) {
 
   /* ── 侧边栏内容 ── */
   const Sidebar = () => (
-    <div className="flex flex-col h-full" style={{ background: 'var(--sidebar)' }}>
+    <div className="flex flex-col h-full" style={{ background: 'var(--sb-bg)', borderRight: '1px solid var(--sb-sep)' }}>
 
       {/* Logo */}
       <div className="px-5 pt-6 pb-4 flex items-center justify-between">
@@ -38,42 +38,37 @@ export default function Layout({ children }) {
             </svg>
           </div>
           <div>
-            <p className="text-white text-[13px] font-semibold leading-none">采购运营组</p>
-            <p className="text-white/30 text-[10px] mt-0.5 tracking-widest">PORTAL</p>
+            <p className="text-[13px] font-semibold leading-none" style={{ color: 'var(--sb-text-strong)' }}>采购运营组</p>
+            <p className="text-[10px] mt-0.5 tracking-widest" style={{ color: 'var(--sb-muted)' }}>PORTAL</p>
           </div>
         </div>
-        <button onClick={() => setOpen(false)} className="press lg:hidden text-white/30 hover:text-white/60 transition-colors">
+        <button onClick={() => setOpen(false)} className="press lg:hidden transition-colors" style={{ color: 'var(--sb-muted)' }}>
           <X className="w-4 h-4" />
         </button>
       </div>
 
-      <div className="mx-4 h-px" style={{ background: 'rgba(255,255,255,0.05)' }} />
+      <div className="mx-4 h-px" style={{ background: 'var(--sb-sep)' }} />
 
       {/* 导航 */}
       <nav className="flex-1 px-3 py-3 space-y-0.5">
         {links.map(item => (
           <NavLink key={item.to} to={item.to} onClick={() => setOpen(false)}
             className={({ isActive }) =>
-              `group flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-200 press ${
-                isActive ? 'text-white' : 'text-white/40 hover:text-white/75 hover:bg-white/5'
-              }`
-            }
-            style={({ isActive }) => isActive
-              ? { background: 'rgba(99,102,241,0.35)' }
-              : {}
+              `sb-nav-link flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-200 press${isActive ? ' sb-nav-active' : ''}`
             }>
             {({ isActive }) => (
               <>
-                <item.icon className={`w-4 h-4 shrink-0 transition-colors ${isActive ? 'text-white' : 'text-white/35 group-hover:text-white/65'}`} strokeWidth={isActive ? 2.2 : 1.75} />
+                <item.icon className="w-4 h-4 shrink-0" strokeWidth={isActive ? 2.2 : 1.75}
+                  style={{ color: isActive ? 'var(--sb-active-text)' : 'var(--sb-muted)' }} />
                 {item.label}
-                {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-400/70" />}
+                {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full" style={{ background: 'var(--sb-active-text)', opacity: 0.45 }} />}
               </>
             )}
           </NavLink>
         ))}
       </nav>
 
-      <div className="mx-4 h-px" style={{ background: 'rgba(255,255,255,0.05)' }} />
+      <div className="mx-4 h-px" style={{ background: 'var(--sb-sep)' }} />
 
       {/* 用户信息 */}
       <div className="p-4 space-y-3">
@@ -83,31 +78,29 @@ export default function Layout({ children }) {
             {(profile?.displayName || '?')[0].toUpperCase()}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-white text-[12px] font-semibold truncate">{profile?.displayName || '用户'}</p>
-            <p className="text-white/30 text-[10px] truncate">{profile?.email}</p>
+            <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--sb-text-strong)' }}>{profile?.displayName || '用户'}</p>
+            <p className="text-[10px] truncate" style={{ color: 'var(--sb-muted)' }}>{profile?.email}</p>
           </div>
           {isAdmin && (
             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md tracking-wide shrink-0"
-              style={{ background: 'rgba(99,102,241,0.25)', color: '#A5B4FC', border: '1px solid rgba(99,102,241,0.25)' }}>
+              style={{ background: 'var(--sb-active)', color: 'var(--sb-active-text)', border: '1px solid var(--sb-sep)', opacity: 0.9 }}>
               ADMIN
             </span>
           )}
         </div>
         <div className="flex items-center gap-2">
           <button onClick={toggle}
-            className="press flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-medium text-white/40 hover:text-white/70 transition-colors"
-            style={{ background: 'rgba(255,255,255,0.05)' }}>
+            className="sb-btn press flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-medium transition-colors">
             {dark ? <Sun className="w-3 h-3" /> : <Moon className="w-3 h-3" />}
             {dark ? '浅色' : '深色'}
           </button>
           <button onClick={() => setPwOpen(true)}
-            className="press flex items-center justify-center py-1.5 px-2 rounded-lg text-white/40 hover:text-white/70 transition-colors"
-            style={{ background: 'rgba(255,255,255,0.05)' }} title="修改密码">
+            className="sb-btn press flex items-center justify-center py-1.5 px-2 rounded-lg transition-colors"
+            title="修改密码">
             <KeyRound className="w-3 h-3" />
           </button>
           <button onClick={handleLogout}
-            className="press flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-medium text-white/40 hover:text-red-400/70 transition-colors"
-            style={{ background: 'rgba(255,255,255,0.05)' }}>
+            className="sb-btn sb-btn-danger press flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[11px] font-medium transition-colors">
             <LogOut className="w-3 h-3" />退出
           </button>
         </div>
@@ -139,7 +132,7 @@ export default function Layout({ children }) {
       <div className="flex-1 flex flex-col min-w-0 lg:ml-[220px]">
         {/* 移动顶栏 */}
         <header className="lg:hidden sticky top-0 z-10 flex items-center justify-between px-4 py-3"
-          style={{ background: 'rgba(var(--bg-rgb,240,244,255),0.85)', backdropFilter: 'blur(16px)', borderBottom: '1px solid var(--border)' }}>
+          style={{ background: 'var(--surface)', backdropFilter: 'blur(16px)', borderBottom: '1px solid var(--border)' }}>
           <button onClick={() => setOpen(true)} className="press p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 text-[var(--text)] transition-colors">
             <Menu className="w-5 h-5" />
           </button>

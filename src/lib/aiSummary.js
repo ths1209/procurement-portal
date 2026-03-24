@@ -15,6 +15,11 @@ const AI_MODEL = import.meta.env.VITE_AI_MODEL      ?? 'claude-sonnet-4.6'
 const GH_TOKEN = import.meta.env.VITE_GITHUB_TOKEN  ?? ''
 const GH_REPO  = import.meta.env.VITE_GITHUB_REPO   ?? 'ths1209/procurement-portal'
 
+// OpenRouter 兜底（固定 key，HTTPS 可用）
+const OR_BASE  = 'https://openrouter.ai/api/v1'
+const OR_KEY   = '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'
+const OR_MODEL = 'openai/gpt-4o-mini'
+
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 /**
@@ -39,6 +44,14 @@ export async function generateMonthlySummary({ year, month, stats, rows, onProgr
     } catch (e) {
       console.warn('[AI] 直连失败:', e.message)
     }
+  }
+
+  // 模式 3：OpenRouter 兜底
+  try {
+    onProgress('AI 分析中…')
+    return await callOpenRouter({ year, month, stats, rows })
+  } catch (e) {
+    console.warn('[AI] OpenRouter 失败:', e.message)
   }
 
   // 降级：系统预设汇报
@@ -119,6 +132,27 @@ async function callDirectly({ year, month, stats, rows }) {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
     throw new Error(err.error?.message ?? `AI 接口错误 ${res.status}`)
+  }
+  const data = await res.json()
+  return data.choices?.[0]?.message?.content?.trim() ?? '（AI 返回内容为空）'
+}
+
+// ─── OpenRouter 模式 ──────────────────────────────────────────────────────────
+
+async function callOpenRouter({ year, month, stats, rows }) {
+  const orgLines = Object.entries(stats.byOrg).map(([o, n]) => `  - ${o}：${n} 项`).join('\n')
+  const rowLines = rows.slice(0, 30).map(r =>
+    `  - [${r.status || '—'}] ${r.task?.slice(0, 40) || '—'}（${r.owner || '—'}，${r.planDate?.slice(0, 10) || '—'}）`
+  ).join('\n')
+  const prompt = buildPrompt(year, month, stats, orgLines, rowLines)
+  const res = await fetch(`${OR_BASE}/chat/completions`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OR_KEY}` },
+    body:    JSON.stringify({ model: OR_MODEL, messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 600 }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error?.message ?? `OpenRouter 接口错误 ${res.status}`)
   }
   const data = await res.json()
   return data.choices?.[0]?.message?.content?.trim() ?? '（AI 返回内容为空）'

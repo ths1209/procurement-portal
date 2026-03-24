@@ -1,14 +1,16 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { LayoutDashboard, ClipboardList, Users, LogOut, Menu, X, Sun, Moon, KeyRound } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, Medal, BookOpen, Users, LogOut, Menu, X, Sun, Moon, KeyRound } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 
 const NAV = [
-  { to: '/dashboard', label: '百宝箱', icon: LayoutDashboard },
-  { to: '/projects',  label: '项目进度', icon: ClipboardList   },
-  { to: '/admin',     label: '用户管理', icon: Users, admin: true },
+  { to: '/dashboard',  label: '百宝箱',     icon: LayoutDashboard },
+  { to: '/projects',   label: '项目进度',   icon: ClipboardList   },
+  { to: '/reviews',    label: '百万项目评审', icon: Medal           },
+  { to: '/consulting', label: '咨询赋能台账', icon: BookOpen        },
+  { to: '/admin',      label: '用户管理',   icon: Users, admin: true },
 ]
 
 export default function Layout({ children }) {

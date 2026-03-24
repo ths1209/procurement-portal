@@ -6,6 +6,8 @@ import Layout from './components/Layout'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Projects from './pages/Projects'
+import Reviews from './pages/Reviews'
+import Consulting from './pages/Consulting'
 import AdminPanel from './pages/AdminPanel'
 
 function AnimatedRoutes() {
@@ -35,6 +37,12 @@ function AnimatedRoutes() {
       } />
       <Route path="/projects" element={
         <ProtectedRoute><Layout><Projects /></Layout></ProtectedRoute>
+      } />
+      <Route path="/reviews" element={
+        <ProtectedRoute><Layout><Reviews /></Layout></ProtectedRoute>
+      } />
+      <Route path="/consulting" element={
+        <ProtectedRoute><Layout><Consulting /></Layout></ProtectedRoute>
       } />
       <Route path="/admin" element={
         <ProtectedRoute requireAdmin><Layout><AdminPanel /></Layout></ProtectedRoute>

@@ -1,19 +1,19 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { RefreshCw, Plus, Search, X, Pencil, Trash2, BookOpen, TrendingUp, Users } from 'lucide-react'
+import { RefreshCw, Plus, Search, X, Eye, Pencil, Trash2, BookOpen, CheckCircle2, Clock, BarChart2 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import {
   listConsulting, createRecord, updateRecord, deleteRecord,
-  isConfigured, C, TYPE_OPTS, LANDED_OPTS, TYPE_CFG,
+  isConfigured, C, Q_TYPE_OPTS, Q_STAGE_OPTS, STATUS_OPTS, Q_TYPE_CFG,
 } from '../lib/teableConsulting'
 
 const EMPTY_FORM = {
-  [C.type]: '培训赋能', [C.date]: '', [C.title]: '', [C.beneficiary]: '',
-  [C.headcount]: '', [C.trainer]: '', [C.toolName]: '', [C.usageRate]: '',
-  [C.direction]: '', [C.outcome]: '', [C.landed]: '', [C.remark]: '',
+  [C.question]: '', [C.answer]: '', [C.qType]: '', [C.qStage]: '',
+  [C.contact]: '', [C.dept]: '', [C.handler]: '',
+  [C.acceptDate]: '', [C.solveDate]: '', [C.status]: 'OPEN', [C.month]: '',
 }
 
-/* ── 通用输入组件 ── */
+/* ── 通用组件 ── */
 function LRow({ label, children }) {
   return (
     <div className="flex flex-col gap-0.5">
@@ -22,7 +22,6 @@ function LRow({ label, children }) {
     </div>
   )
 }
-
 function Input({ value, onChange, ...rest }) {
   return (
     <input value={value ?? ''} onChange={e => onChange(e.target.value)}
@@ -31,7 +30,6 @@ function Input({ value, onChange, ...rest }) {
       {...rest} />
   )
 }
-
 function Sel({ value, onChange, options, placeholder }) {
   return (
     <select value={value ?? ''} onChange={e => onChange(e.target.value)}
@@ -42,21 +40,30 @@ function Sel({ value, onChange, options, placeholder }) {
     </select>
   )
 }
-
-function Textarea({ value, onChange, rows = 3 }) {
+function Textarea({ value, onChange, rows = 4 }) {
   return (
     <textarea value={value ?? ''} onChange={e => onChange(e.target.value)} rows={rows}
       className="w-full px-3 py-1.5 rounded-lg text-sm outline-none resize-none"
       style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)' }} />
   )
 }
-
 function TypeBadge({ type }) {
-  const cfg = TYPE_CFG[type] ?? { color: '#6B7280', bg: 'rgba(107,114,128,0.1)' }
+  const cfg = Q_TYPE_CFG[type] ?? { color: '#6B7280', bg: 'rgba(107,114,128,0.1)' }
+  return (
+    <span className="px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap"
+      style={{ color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.color}28` }}>
+      {type || '—'}
+    </span>
+  )
+}
+function StatusBadge({ status }) {
+  const isOpen = status !== 'CLOSE'
   return (
     <span className="px-2 py-0.5 rounded text-xs font-medium"
-      style={{ color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.color}30` }}>
-      {type}
+      style={isOpen
+        ? { color: '#F59E0B', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)' }
+        : { color: '#10B981', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)' }}>
+      {isOpen ? 'OPEN' : 'CLOSE'}
     </span>
   )
 }
@@ -64,20 +71,19 @@ function TypeBadge({ type }) {
 /* ── 新建/编辑弹窗 ── */
 function EditModal({ row, onClose, onSave }) {
   const [form, setForm] = useState(row ? {
-    [C.type]: row.type, [C.date]: row.date, [C.title]: row.title,
-    [C.beneficiary]: row.beneficiary, [C.headcount]: row.headcount,
-    [C.trainer]: row.trainer, [C.toolName]: row.toolName, [C.usageRate]: row.usageRate,
-    [C.direction]: row.direction, [C.outcome]: row.outcome,
-    [C.landed]: row.landed, [C.remark]: row.remark,
+    [C.question]: row.question, [C.answer]: row.answer,
+    [C.qType]: row.qType, [C.qStage]: row.qStage,
+    [C.contact]: row.contact, [C.dept]: row.dept, [C.handler]: row.handler,
+    [C.acceptDate]: row.acceptDate, [C.solveDate]: row.solveDate,
+    [C.status]: row.status, [C.month]: row.month,
   } : { ...EMPTY_FORM })
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
   function set(key, val) { setForm(f => ({ ...f, [key]: val })) }
-  const type = form[C.type]
 
   async function handleSave() {
-    if (!form[C.title]) { setErr('主题/名称不能为空'); return }
+    if (!form[C.question]) { setErr('咨询问题不能为空'); return }
     setSaving(true); setErr('')
     try { await onSave(form) } catch (e) { setErr(e.message); setSaving(false) }
   }
@@ -85,49 +91,36 @@ function EditModal({ row, onClose, onSave }) {
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)' }}>
-      <div className="w-full max-w-xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh]"
+      <div className="w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh]"
         style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
         <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--border)' }}>
           <span className="font-semibold text-sm" style={{ color: 'var(--text)' }}>
-            {row ? '编辑赋能记录' : '新建赋能记录'}
+            {row ? '编辑咨询记录' : '新建咨询记录'}
           </span>
           <button onClick={onClose} className="p-1 rounded hover:opacity-70">
             <X className="w-4 h-4" style={{ color: 'var(--muted)' }} />
           </button>
         </div>
         <div className="p-5 overflow-y-auto flex flex-col gap-4">
+          <LRow label="咨询和受理问题 *"><Textarea value={form[C.question]} onChange={v => set(C.question, v)} rows={3} /></LRow>
+          <LRow label="咨询建议和反馈"><Textarea value={form[C.answer]} onChange={v => set(C.answer, v)} rows={3} /></LRow>
           <div className="grid grid-cols-2 gap-4">
-            <LRow label="赋能类型">
-              <Sel value={form[C.type]} onChange={v => set(C.type, v)} options={TYPE_OPTS} />
+            <LRow label="问题类型">
+              <Sel value={form[C.qType]} onChange={v => set(C.qType, v)} options={Q_TYPE_OPTS} placeholder="请选择" />
             </LRow>
-            <LRow label="日期"><Input value={form[C.date]} onChange={v => set(C.date, v)} type="date" /></LRow>
-            <LRow label="主题/名称 *">
-              <Input value={form[C.title]} onChange={v => set(C.title, v)}
-                placeholder={type === '培训赋能' ? '培训主题' : type === '工具赋能' ? '工具名称' : type === '咨询赋能' ? '咨询主题' : '项目名称'} />
+            <LRow label="问题阶段">
+              <Sel value={form[C.qStage]} onChange={v => set(C.qStage, v)} options={Q_STAGE_OPTS} placeholder="请选择" />
             </LRow>
-            <LRow label="受益组织">
-              <Input value={form[C.beneficiary]} onChange={v => set(C.beneficiary, v)} placeholder="如：运营分析组" />
+            <LRow label="对接人"><Input value={form[C.contact]} onChange={v => set(C.contact, v)} /></LRow>
+            <LRow label="对接部门"><Input value={form[C.dept]} onChange={v => set(C.dept, v)} /></LRow>
+            <LRow label="处理人"><Input value={form[C.handler]} onChange={v => set(C.handler, v)} /></LRow>
+            <LRow label="状态">
+              <Sel value={form[C.status]} onChange={v => set(C.status, v)} options={STATUS_OPTS} />
             </LRow>
-
-            {/* 类型特定字段 */}
-            {type === '培训赋能' && <>
-              <LRow label="讲师"><Input value={form[C.trainer]} onChange={v => set(C.trainer, v)} /></LRow>
-              <LRow label="参与人数"><Input value={form[C.headcount]} onChange={v => set(C.headcount, v)} type="number" /></LRow>
-            </>}
-            {type === '工具赋能' && <>
-              <LRow label="工具名称"><Input value={form[C.toolName]} onChange={v => set(C.toolName, v)} /></LRow>
-              <LRow label="使用率 (%)"><Input value={form[C.usageRate]} onChange={v => set(C.usageRate, v)} type="number" placeholder="0-100" /></LRow>
-            </>}
-            {type === '咨询赋能' && (
-              <LRow label="咨询方向"><Input value={form[C.direction]} onChange={v => set(C.direction, v)} /></LRow>
-            )}
-
-            <LRow label="落地情况">
-              <Sel value={form[C.landed]} onChange={v => set(C.landed, v)} options={LANDED_OPTS} placeholder="请选择" />
-            </LRow>
+            <LRow label="受理日期"><Input value={form[C.acceptDate]} onChange={v => set(C.acceptDate, v)} type="date" /></LRow>
+            <LRow label="解决日期"><Input value={form[C.solveDate]} onChange={v => set(C.solveDate, v)} type="date" /></LRow>
+            <LRow label="受理月份"><Input value={form[C.month]} onChange={v => set(C.month, v)} placeholder="如：2025-03" /></LRow>
           </div>
-          <LRow label="效果/结论"><Textarea value={form[C.outcome]} onChange={v => set(C.outcome, v)} /></LRow>
-          <LRow label="备注"><Input value={form[C.remark]} onChange={v => set(C.remark, v)} /></LRow>
           {err && <p className="text-xs text-red-400">{err}</p>}
         </div>
         <div className="px-5 py-4 flex justify-end gap-2" style={{ borderTop: '1px solid var(--border)' }}>
@@ -144,27 +137,130 @@ function EditModal({ row, onClose, onSave }) {
   )
 }
 
-/* ── 可视化：统计卡片 ── */
-function StatCards({ rows }) {
-  return (
-    <div className="grid grid-cols-4 gap-3">
-      {TYPE_OPTS.map(type => {
-        const cfg = TYPE_CFG[type]
-        const count = rows.filter(r => r.type === type).length
-        return (
-          <div key={type} className="rounded-xl p-4 flex flex-col gap-2"
-            style={{ background: 'var(--surface)', border: `1px solid ${cfg.color}30` }}>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium" style={{ color: cfg.color }}>{type}</span>
-              <span className="text-2xl font-bold" style={{ color: cfg.color }}>{count}</span>
-            </div>
-            <div className="h-1 rounded-full" style={{ background: 'var(--surface2)' }}>
-              <div className="h-1 rounded-full transition-all"
-                style={{ width: rows.length ? `${(count / rows.length) * 100}%` : '0%', background: cfg.color }} />
+/* ── 详情弹窗 ── */
+function DetailModal({ row, onClose, onEdit, onDelete, isAdmin }) {
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)' }}>
+      <div className="w-full max-w-xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh]"
+        style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div className="flex items-start justify-between px-5 py-4 gap-3" style={{ borderBottom: '1px solid var(--border)' }}>
+          <div className="flex items-start gap-2 flex-1 min-w-0">
+            <TypeBadge type={row.qType} />
+            <StatusBadge status={row.status} />
+          </div>
+          <button onClick={onClose} className="p-1 rounded hover:opacity-70 shrink-0">
+            <X className="w-4 h-4" style={{ color: 'var(--muted)' }} />
+          </button>
+        </div>
+        <div className="p-5 overflow-y-auto flex flex-col gap-4">
+          <div>
+            <div className="text-xs mb-1" style={{ color: 'var(--muted)' }}>咨询和受理问题</div>
+            <div className="text-sm leading-relaxed p-3 rounded-xl whitespace-pre-wrap"
+              style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }}>
+              {row.question || '—'}
             </div>
           </div>
-        )
-      })}
+          {row.answer && (
+            <div>
+              <div className="text-xs mb-1" style={{ color: 'var(--muted)' }}>咨询建议和反馈</div>
+              <div className="text-sm leading-relaxed p-3 rounded-xl whitespace-pre-wrap"
+                style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }}>
+                {row.answer}
+              </div>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            {[
+              ['问题阶段', row.qStage], ['对接人', row.contact],
+              ['对接部门', row.dept],   ['处理人', row.handler],
+              ['受理日期', row.acceptDate], ['解决日期', row.solveDate || '—'],
+              ['受理月份', row.month],
+            ].map(([l, v]) => (
+              <div key={l}>
+                <div className="text-xs mb-0.5" style={{ color: 'var(--muted)' }}>{l}</div>
+                <div style={{ color: 'var(--text)' }}>{v || '—'}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="px-5 py-4 flex justify-between" style={{ borderTop: '1px solid var(--border)' }}>
+          {isAdmin
+            ? <button onClick={() => onDelete(row)} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1">
+                <Trash2 className="w-3.5 h-3.5" /> 删除
+              </button>
+            : <span />}
+          <div className="flex gap-2">
+            <button onClick={onClose} className="px-4 py-1.5 rounded-lg text-sm" style={{ color: 'var(--muted)' }}>关闭</button>
+            <button onClick={() => onEdit(row)} className="px-4 py-1.5 rounded-lg text-sm font-medium"
+              style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }}>
+              <Pencil className="w-3.5 h-3.5 inline mr-1" />编辑
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+/* ── 可视化：统计卡片 ── */
+function StatCards({ rows }) {
+  const total  = rows.length
+  const open   = rows.filter(r => r.status !== 'CLOSE').length
+  const closed = rows.filter(r => r.status === 'CLOSE').length
+  const thisMonth = (() => {
+    const m = new Date().toISOString().slice(0, 7)
+    return rows.filter(r => r.acceptDate?.startsWith(m) || r.month?.startsWith(m)).length
+  })()
+  return (
+    <div className="grid grid-cols-4 gap-3">
+      {[
+        { label: '累计受理', value: total,      color: '#6366F1' },
+        { label: '待处理',   value: open,       color: '#F59E0B' },
+        { label: '已关闭',   value: closed,     color: '#10B981' },
+        { label: '本月新增', value: thisMonth,  color: '#0EA5E9' },
+      ].map(s => (
+        <div key={s.label} className="rounded-xl p-4 flex flex-col gap-1"
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <span className="text-2xl font-bold" style={{ color: s.color }}>{s.value}</span>
+          <span className="text-xs" style={{ color: 'var(--muted)' }}>{s.label}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/* ── 可视化：问题类型分布 ── */
+function TypeDistribution({ rows }) {
+  const data = useMemo(() => {
+    const map = {}
+    rows.forEach(r => { if (r.qType) map[r.qType] = (map[r.qType] ?? 0) + 1 })
+    return Object.entries(map).sort(([, a], [, b]) => b - a)
+  }, [rows])
+  if (data.length === 0) return null
+  const max = data[0]?.[1] ?? 1
+  return (
+    <div className="rounded-xl p-4" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <div className="flex items-center gap-2 mb-4">
+        <BarChart2 className="w-4 h-4" style={{ color: '#6366F1' }} strokeWidth={1.75} />
+        <span className="text-sm font-medium" style={{ color: 'var(--text)' }}>问题类型分布</span>
+      </div>
+      <div className="flex flex-col gap-2.5">
+        {data.map(([type, count]) => {
+          const cfg = Q_TYPE_CFG[type] ?? { color: '#6B7280' }
+          return (
+            <div key={type} className="flex items-center gap-3">
+              <span className="text-xs w-28 truncate shrink-0" style={{ color: 'var(--muted)' }}>{type}</span>
+              <div className="flex-1 h-1.5 rounded-full" style={{ background: 'var(--surface2)' }}>
+                <div className="h-1.5 rounded-full transition-all"
+                  style={{ width: `${(count / max) * 100}%`, background: cfg.color }} />
+              </div>
+              <span className="text-xs w-5 text-right shrink-0 font-medium" style={{ color: 'var(--text)' }}>{count}</span>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -174,65 +270,26 @@ function MonthlyTrend({ rows }) {
   const months = useMemo(() => {
     const map = {}
     rows.forEach(r => {
-      const m = r.date?.slice(0, 7)
-      if (!m) return
-      map[m] = (map[m] ?? 0) + 1
+      const m = r.month || r.acceptDate?.slice(0, 7)
+      if (m) map[m] = (map[m] ?? 0) + 1
     })
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).slice(-6)
   }, [rows])
-
   if (months.length === 0) return null
   const max = Math.max(...months.map(([, v]) => v), 1)
-
   return (
     <div className="rounded-xl p-4" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
       <div className="flex items-center gap-2 mb-4">
-        <TrendingUp className="w-4 h-4" style={{ color: '#6366F1' }} strokeWidth={1.75} />
-        <span className="text-sm font-medium" style={{ color: 'var(--text)' }}>月度趋势</span>
+        <Clock className="w-4 h-4" style={{ color: '#0EA5E9' }} strokeWidth={1.75} />
+        <span className="text-sm font-medium" style={{ color: 'var(--text)' }}>月度受理趋势</span>
       </div>
       <div className="flex items-end gap-2 h-16">
         {months.map(([m, v]) => (
           <div key={m} className="flex-1 flex flex-col items-center gap-1">
             <span className="text-xs font-medium" style={{ color: 'var(--text)' }}>{v}</span>
             <div className="w-full rounded-t transition-all"
-              style={{ height: `${(v / max) * 48}px`, background: '#6366F1', minHeight: 4, opacity: 0.8 }} />
+              style={{ height: `${(v / max) * 48}px`, background: '#0EA5E9', minHeight: 4, opacity: 0.8 }} />
             <span className="text-[10px]" style={{ color: 'var(--muted)' }}>{m.slice(5)}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-/* ── 可视化：受益组织分布 ── */
-function OrgDistribution({ rows }) {
-  const orgs = useMemo(() => {
-    const map = {}
-    rows.forEach(r => {
-      const o = r.beneficiary || '未填写'
-      map[o] = (map[o] ?? 0) + 1
-    })
-    return Object.entries(map).sort(([, a], [, b]) => b - a).slice(0, 6)
-  }, [rows])
-
-  if (orgs.length === 0) return null
-  const max = orgs[0]?.[1] ?? 1
-
-  return (
-    <div className="rounded-xl p-4" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-      <div className="flex items-center gap-2 mb-4">
-        <Users className="w-4 h-4" style={{ color: '#0EA5E9' }} strokeWidth={1.75} />
-        <span className="text-sm font-medium" style={{ color: 'var(--text)' }}>受益组织</span>
-      </div>
-      <div className="flex flex-col gap-2.5">
-        {orgs.map(([org, count]) => (
-          <div key={org} className="flex items-center gap-3">
-            <span className="text-xs w-24 truncate shrink-0" style={{ color: 'var(--muted)' }}>{org}</span>
-            <div className="flex-1 h-1.5 rounded-full" style={{ background: 'var(--surface2)' }}>
-              <div className="h-1.5 rounded-full transition-all"
-                style={{ width: `${(count / max) * 100}%`, background: '#0EA5E9' }} />
-            </div>
-            <span className="text-xs w-4 text-right shrink-0" style={{ color: 'var(--text)' }}>{count}</span>
           </div>
         ))}
       </div>
@@ -246,12 +303,14 @@ export default function Consulting() {
   const isAdmin = profile?.role === 'admin'
   const configured = isConfigured()
 
-  const [rows, setRows]     = useState([])
-  const [loading, setLoad]  = useState(false)
-  const [err, setErr]       = useState('')
-  const [search, setSearch] = useState('')
+  const [rows, setRows]       = useState([])
+  const [loading, setLoad]    = useState(false)
+  const [err, setErr]         = useState('')
+  const [search, setSearch]   = useState('')
   const [typeFilter, setType] = useState('全部')
-  const [editRow, setEdit]  = useState(null)  // null=关, false=新建, row=编辑
+  const [statusFilter, setSt] = useState('全部')
+  const [editRow, setEdit]    = useState(null)
+  const [viewRow, setView]    = useState(null)
 
   async function load() {
     setLoad(true); setErr('')
@@ -261,31 +320,30 @@ export default function Consulting() {
 
   const shown = useMemo(() => {
     let r = rows
-    if (typeFilter !== '全部') r = r.filter(x => x.type === typeFilter)
+    if (typeFilter !== '全部') r = r.filter(x => x.qType === typeFilter)
+    if (statusFilter !== '全部') r = r.filter(x => x.status === statusFilter)
     if (search) {
       const q = search.toLowerCase()
       r = r.filter(x =>
-        x.title.toLowerCase().includes(q) ||
-        x.beneficiary.toLowerCase().includes(q) ||
-        x.outcome.toLowerCase().includes(q)
+        x.question.toLowerCase().includes(q) ||
+        x.contact.toLowerCase().includes(q) ||
+        x.dept.toLowerCase().includes(q) ||
+        x.handler.toLowerCase().includes(q)
       )
     }
     return r
-  }, [rows, typeFilter, search])
+  }, [rows, typeFilter, statusFilter, search])
 
   async function handleSave(form) {
-    if (editRow && editRow._id) {
-      await updateRecord(editRow._id, form)
-    } else {
-      await createRecord(form, profile?.displayName ?? profile?.email ?? '')
-    }
+    if (editRow && editRow._id) await updateRecord(editRow._id, form)
+    else await createRecord(form)
     setEdit(null)
     await load()
   }
 
   async function handleDelete(row) {
-    if (!confirm(`确认删除赋能记录"${row.title}"？`)) return
-    try { await deleteRecord(row._id); await load() } catch (e) { alert(e.message) }
+    if (!confirm(`确认删除该咨询记录？`)) return
+    try { await deleteRecord(row._id); setView(null); await load() } catch (e) { alert(e.message) }
   }
 
   return (
@@ -294,24 +352,24 @@ export default function Consulting() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 mb-0.5">
-            <BookOpen className="w-5 h-5" style={{ color: '#8B5CF6' }} strokeWidth={1.75} />
+            <BookOpen className="w-5 h-5" style={{ color: '#6366F1' }} strokeWidth={1.75} />
             <h1 className="font-semibold text-lg" style={{ color: 'var(--text)' }}>咨询赋能台账</h1>
           </div>
           <p className="text-xs" style={{ color: 'var(--muted)' }}>
-            赋能数据登记与多维度可视化
-            {!configured && <span className="ml-2 text-amber-400">（未配置数据表，请联系管理员）</span>}
+            咨询受理记录 · 问题分析与追踪
+            {!configured && <span className="ml-2 text-amber-400">（未配置数据表）</span>}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={load} disabled={loading}
-            className="p-2 rounded-lg transition-opacity hover:opacity-70"
+            className="p-2 rounded-lg hover:opacity-70"
             style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
             <RefreshCw className="w-4 h-4" style={{ color: 'var(--muted)', animation: loading ? 'spin 1s linear infinite' : '' }} strokeWidth={1.75} />
           </button>
           <button onClick={() => setEdit(false)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white"
-            style={{ background: '#8B5CF6' }}>
-            <Plus className="w-4 h-4" strokeWidth={2} />登记
+            style={{ background: '#6366F1' }}>
+            <Plus className="w-4 h-4" strokeWidth={2} />新建
           </button>
         </div>
       </div>
@@ -322,94 +380,99 @@ export default function Consulting() {
       {/* 可视化图表 */}
       {rows.length > 0 && (
         <div className="grid grid-cols-2 gap-3">
+          <TypeDistribution rows={rows} />
           <MonthlyTrend rows={rows} />
-          <OrgDistribution rows={rows} />
         </div>
       )}
 
       {/* 筛选 + 搜索 */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex gap-1.5 flex-wrap">
-          {['全部', ...TYPE_OPTS].map(t => (
+          {['全部', ...Q_TYPE_OPTS].map(t => (
             <button key={t} onClick={() => setType(t)}
               className="px-3 py-1 rounded-full text-xs transition-all"
               style={typeFilter === t
-                ? { background: '#8B5CF6', color: '#fff' }
+                ? { background: '#6366F1', color: '#fff' }
                 : { background: 'var(--surface2)', color: 'var(--muted)', border: '1px solid var(--border)' }}>
               {t}
             </button>
           ))}
         </div>
-        <div className="flex-1 min-w-48 relative">
+        <div className="flex gap-1.5">
+          {['全部', 'OPEN', 'CLOSE'].map(s => (
+            <button key={s} onClick={() => setSt(s)}
+              className="px-3 py-1 rounded-full text-xs transition-all"
+              style={statusFilter === s
+                ? { background: s === 'OPEN' ? '#F59E0B' : s === 'CLOSE' ? '#10B981' : '#52525B', color: '#fff' }
+                : { background: 'var(--surface2)', color: 'var(--muted)', border: '1px solid var(--border)' }}>
+              {s}
+            </button>
+          ))}
+        </div>
+        <div className="flex-1 min-w-40 relative">
           <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted)' }} />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="搜索主题、受益方、结论"
+            placeholder="搜索问题、对接人、部门、处理人"
             className="w-full pl-8 pr-3 py-1.5 rounded-lg text-sm outline-none"
             style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)' }} />
         </div>
       </div>
 
-      {/* 记录列表 */}
+      {/* 表格 */}
       <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
         <div className="grid text-xs px-4 py-2.5"
-          style={{ gridTemplateColumns: '7rem 1fr 7rem 5rem 6rem 5rem 5rem', background: 'var(--surface2)', color: 'var(--muted)', borderBottom: '1px solid var(--border)' }}>
-          <span>类型</span>
-          <span>主题/名称</span>
-          <span>受益组织</span>
-          <span>日期</span>
-          <span>效果/结论</span>
-          <span>落地情况</span>
+          style={{ gridTemplateColumns: '1fr 8rem 6rem 5rem 5rem 6rem 6rem', background: 'var(--surface2)', color: 'var(--muted)', borderBottom: '1px solid var(--border)' }}>
+          <span>咨询问题</span>
+          <span>问题类型</span>
+          <span>对接人</span>
+          <span>处理人</span>
+          <span>状态</span>
+          <span>受理日期</span>
           <span className="text-center">操作</span>
         </div>
 
         {loading && (
           <div className="flex justify-center py-10">
-            <div className="w-6 h-6 border-2 border-purple-500/30 border-t-purple-500 rounded-full animate-spin" />
+            <div className="w-6 h-6 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
           </div>
         )}
-        {!loading && err && (
-          <div className="text-center py-10 text-sm text-red-400">{err}</div>
-        )}
+        {!loading && err && <div className="text-center py-10 text-sm text-red-400">{err}</div>}
         {!loading && !err && shown.length === 0 && (
           <div className="text-center py-12 flex flex-col items-center gap-2">
             <BookOpen className="w-8 h-8" style={{ color: 'var(--muted)' }} strokeWidth={1.25} />
-            <p className="text-sm" style={{ color: 'var(--muted)' }}>暂无赋能记录</p>
+            <p className="text-sm" style={{ color: 'var(--muted)' }}>暂无咨询记录</p>
           </div>
         )}
-        {!loading && shown.map((row, i) => {
-          const landedCfg = {
-            '已落地': { color: '#10B981' }, '推进中': { color: '#F59E0B' }, '未落地': { color: '#6B7280' }
-          }
-          return (
-            <div key={row._id} className="grid items-center px-4 py-3 text-sm transition-colors hover:bg-white/[0.02]"
-              style={{ gridTemplateColumns: '7rem 1fr 7rem 5rem 6rem 5rem 5rem', borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
-              <span><TypeBadge type={row.type} /></span>
-              <span className="font-medium truncate pr-2" style={{ color: 'var(--text)' }}>{row.title}</span>
-              <span className="text-xs truncate" style={{ color: 'var(--muted)' }}>{row.beneficiary || '—'}</span>
-              <span className="text-xs" style={{ color: 'var(--muted)' }}>{row.date || '—'}</span>
-              <span className="text-xs truncate pr-2" style={{ color: 'var(--muted)' }}>{row.outcome || '—'}</span>
-              <span className="text-xs" style={{ color: landedCfg[row.landed]?.color ?? 'var(--muted)' }}>
-                {row.landed || '—'}
-              </span>
-              <div className="flex items-center justify-center gap-2">
-                <button onClick={() => setEdit(row)} className="hover:opacity-70 transition-opacity">
-                  <Pencil className="w-3.5 h-3.5" style={{ color: 'var(--muted)' }} strokeWidth={1.75} />
+        {!loading && shown.map((row, i) => (
+          <div key={row._id} className="grid items-center px-4 py-3 text-sm transition-colors hover:bg-white/[0.02] cursor-pointer"
+            onClick={() => setView(row)}
+            style={{ gridTemplateColumns: '1fr 8rem 6rem 5rem 5rem 6rem 6rem', borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
+            <span className="truncate pr-3 text-xs leading-relaxed" style={{ color: 'var(--text)' }}>{row.question}</span>
+            <span><TypeBadge type={row.qType} /></span>
+            <span className="text-xs truncate" style={{ color: 'var(--muted)' }}>{row.contact || '—'}</span>
+            <span className="text-xs truncate" style={{ color: 'var(--muted)' }}>{row.handler || '—'}</span>
+            <span><StatusBadge status={row.status} /></span>
+            <span className="text-xs" style={{ color: 'var(--muted)' }}>{row.acceptDate || '—'}</span>
+            <div className="flex items-center justify-center gap-2" onClick={e => e.stopPropagation()}>
+              <button onClick={() => setView(row)} className="hover:opacity-70">
+                <Eye className="w-3.5 h-3.5" style={{ color: 'var(--muted)' }} strokeWidth={1.75} />
+              </button>
+              <button onClick={() => setEdit(row)} className="hover:opacity-70">
+                <Pencil className="w-3.5 h-3.5" style={{ color: 'var(--muted)' }} strokeWidth={1.75} />
+              </button>
+              {isAdmin && (
+                <button onClick={() => handleDelete(row)} className="hover:opacity-70">
+                  <Trash2 className="w-3.5 h-3.5 text-red-400/70" strokeWidth={1.75} />
                 </button>
-                {isAdmin && (
-                  <button onClick={() => handleDelete(row)} className="hover:opacity-70 transition-opacity">
-                    <Trash2 className="w-3.5 h-3.5 text-red-400/70" strokeWidth={1.75} />
-                  </button>
-                )}
-              </div>
+              )}
             </div>
-          )
-        })}
+          </div>
+        ))}
       </div>
 
-      {/* 弹窗 */}
-      {editRow !== null && (
-        <EditModal row={editRow || null} onClose={() => setEdit(null)} onSave={handleSave} />
-      )}
+      {editRow !== null && <EditModal row={editRow || null} onClose={() => setEdit(null)} onSave={handleSave} />}
+      {viewRow && <DetailModal row={viewRow} onClose={() => setView(null)}
+        onEdit={r => { setView(null); setEdit(r) }} onDelete={handleDelete} isAdmin={isAdmin} />}
     </div>
   )
 }

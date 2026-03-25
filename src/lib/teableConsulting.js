@@ -3,29 +3,38 @@ const TOKEN = import.meta.env.VITE_TEABLE_TOKEN ?? ''
 const TID   = import.meta.env.VITE_TEABLE_CONSULTING_TABLE_ID ?? ''
 
 export const C = {
-  type:         '类型',
-  date:         '日期',
-  addedBy:      '登记人',
-  title:        '主题/名称',
-  beneficiary:  '受益组织',
-  headcount:    '参与人数',
-  trainer:      '讲师',
-  toolName:     '工具名称',
-  usageRate:    '使用率',
-  direction:    '咨询方向',
-  outcome:      '效果/结论',
-  landed:       '落地情况',
-  remark:       '备注',
+  seq:        '序号',
+  question:   '咨询和受理问题（Question）',
+  answer:     '咨询建议和反馈（Answer）',
+  qType:      '问题类型',
+  qStage:     '问题阶段',
+  contact:    '对接人',
+  dept:       '对接部门',
+  handler:    '处理人',
+  acceptDate: '受理日期',
+  solveDate:  '解决日期',
+  status:     'OPEN',
+  month:      '受理月份',
 }
 
-export const TYPE_OPTS    = ['培训赋能', '项目赋能', '工具赋能', '咨询赋能']
-export const LANDED_OPTS  = ['已落地', '推进中', '未落地']
+export const Q_TYPE_OPTS = [
+  '执行合规咨询', '供应商管理咨询', '供应商系统咨询',
+  '不合规采购事项咨询', '控制建设', '合同环节',
+]
 
-export const TYPE_CFG = {
-  '培训赋能': { color: '#8B5CF6', bg: 'rgba(139,92,246,0.12)' },
-  '项目赋能': { color: '#3B82F6', bg: 'rgba(59,130,246,0.12)' },
-  '工具赋能': { color: '#10B981', bg: 'rgba(16,185,129,0.12)' },
-  '咨询赋能': { color: '#F59E0B', bg: 'rgba(245,158,11,0.12)' },
+export const Q_STAGE_OPTS = [
+  '需求环节', '寻源环节', '付款结算', '供应商系统注册初步', '合同环节',
+]
+
+export const STATUS_OPTS = ['OPEN', 'CLOSE']
+
+export const Q_TYPE_CFG = {
+  '执行合规咨询':     { color: '#6366F1', bg: 'rgba(99,102,241,0.1)'   },
+  '供应商管理咨询':   { color: '#0EA5E9', bg: 'rgba(14,165,233,0.1)'   },
+  '供应商系统咨询':   { color: '#10B981', bg: 'rgba(16,185,129,0.1)'   },
+  '不合规采购事项咨询': { color: '#EF4444', bg: 'rgba(239,68,68,0.1)'  },
+  '控制建设':         { color: '#8B5CF6', bg: 'rgba(139,92,246,0.1)'   },
+  '合同环节':         { color: '#F59E0B', bg: 'rgba(245,158,11,0.1)'   },
 }
 
 async function req(path, init = {}) {
@@ -49,19 +58,18 @@ function norm(r) {
   const f = r.fields ?? {}
   return {
     _id:        r.id,
-    type:       f[C.type]        ?? '',
-    date:       f[C.date]        ?? '',
-    addedBy:    f[C.addedBy]     ?? '',
-    title:      f[C.title]       ?? '',
-    beneficiary:f[C.beneficiary] ?? '',
-    headcount:  f[C.headcount]   ?? '',
-    trainer:    f[C.trainer]     ?? '',
-    toolName:   f[C.toolName]    ?? '',
-    usageRate:  f[C.usageRate]   ?? '',
-    direction:  f[C.direction]   ?? '',
-    outcome:    f[C.outcome]     ?? '',
-    landed:     f[C.landed]      ?? '',
-    remark:     f[C.remark]      ?? '',
+    seq:        f[C.seq]        ?? '',
+    question:   f[C.question]   ?? '',
+    answer:     f[C.answer]     ?? '',
+    qType:      f[C.qType]      ?? '',
+    qStage:     f[C.qStage]     ?? '',
+    contact:    f[C.contact]    ?? '',
+    dept:       f[C.dept]       ?? '',
+    handler:    f[C.handler]    ?? '',
+    acceptDate: f[C.acceptDate] ?? '',
+    solveDate:  f[C.solveDate]  ?? '',
+    status:     f[C.status]     ?? 'OPEN',
+    month:      f[C.month]      ?? '',
   }
 }
 
@@ -70,15 +78,15 @@ export function isConfigured() { return !!TID }
 export async function listConsulting() {
   if (!TID) return []
   const data = await req(`/table/${TID}/record?take=500&fieldKeyType=name`)
-  return (data.records ?? []).map(norm).sort((a, b) => b.date.localeCompare(a.date))
+  return (data.records ?? []).map(norm).sort((a, b) => b.acceptDate.localeCompare(a.acceptDate))
 }
 
-export async function createRecord(fields, addedBy) {
+export async function createRecord(fields) {
   if (!TID) throw new Error('未配置咨询赋能台账数据表')
   return req(`/table/${TID}/record`, {
     method: 'POST',
     body: JSON.stringify({
-      records: [{ fields: { ...clean(fields), [C.addedBy]: addedBy } }],
+      records: [{ fields: clean(fields) }],
       fieldKeyType: 'name',
     }),
   })

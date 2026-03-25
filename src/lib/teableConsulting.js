@@ -105,8 +105,17 @@ export function isConfigured() { return !!TID }
 
 export async function listConsulting() {
   if (!TID) return []
-  const data = await req(`/table/${TID}/record?take=500&fieldKeyType=name`)
-  return (data.records ?? []).map(norm).sort((a, b) => b.acceptDate.localeCompare(a.acceptDate))
+  const PAGE = 500
+  let skip = 0
+  let all = []
+  while (true) {
+    const data = await req(`/table/${TID}/record?take=${PAGE}&skip=${skip}&fieldKeyType=name`)
+    const records = data.records ?? []
+    all = all.concat(records.map(norm))
+    if (records.length < PAGE) break
+    skip += PAGE
+  }
+  return all.sort((a, b) => b.acceptDate.localeCompare(a.acceptDate))
 }
 
 export async function createRecord(fields) {

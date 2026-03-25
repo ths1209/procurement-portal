@@ -52,15 +52,13 @@ export async function generateMonthlySummary({ year, month, stats, rows, onProgr
   }
 
   // 模式 3：OpenRouter 兜底
-  try {
-    onProgress('AI 分析中…')
-    return await callOpenRouter({ year, month, stats, rows })
-  } catch (e) {
-    console.warn('[AI] OpenRouter 失败:', e.message)
-  }
+  onProgress('AI 分析中…')
+  const orResult = await callOpenRouter({ year, month, stats, rows })
+  if (orResult) return orResult
 
   // 降级：系统预设汇报
-  await sleep(400)
+  onProgress('生成预设汇报…')
+  await sleep(300)
   return buildPlaceholder(year, month, stats)
 }
 
@@ -166,7 +164,8 @@ async function callOpenRouter({ year, month, stats, rows }) {
       if (text) return text
     } catch (e) { lastErr = e.message }
   }
-  throw new Error(`所有模型均不可用：${lastErr}`)
+  console.warn('[AI] OpenRouter 所有模型不可用：', lastErr)
+  return null
 }
 
 // ─── 工具函数 ─────────────────────────────────────────────────────────────────

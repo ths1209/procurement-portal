@@ -95,7 +95,25 @@ async function callAIChat(prompt) {
       if (text) return text
     } catch (e) { lastErr = e.message }
   }
-  throw new Error(`所有模型均不可用：${lastErr}`)
+  // 所有模型不可用，返回预设总结
+  console.warn('[AI] 所有模型不可用，降级预设：', lastErr)
+  return null   // 调用方判断 null 则使用预设
+}
+
+function buildConsultingPlaceholder(year, month, stats) {
+  const { total, closed, open, inProc, closeRate, byType, byHandler } = stats
+  const topType    = byType[0]?.[0]    ?? '各类咨询'
+  const topHandler = byHandler[0]?.[0] ?? '处理团队'
+  const risk = open > 0
+    ? `本月仍有 ${open} 条咨询待处理，建议加快跟进，避免积压。`
+    : '本月所有咨询均已处理完毕，响应及时。'
+  return `${year} 年 ${month} 月，咨询赋能台账共受理咨询 ${total} 条，已关闭 ${closed} 条，关闭率 ${closeRate}%，处理中 ${inProc} 条。
+
+本月咨询热点集中在"${topType}"领域，占比最高；${topHandler} 处理量居首，整体响应效率良好。${risk}
+
+建议持续关注高频问题的根因分析，沉淀标准化解答方案，提升赋能质效。
+
+（本报告为系统预设生成，AI 服务暂时不可用）`
 }
 
 // 处理人颜色调色板（最多 12 人）
@@ -631,7 +649,8 @@ ${stats.byHandler.map(([h, n]) => `  - ${h}：${n} 条`).join('\n')}
 2. 点出本月咨询热点和高频问题领域
 3. 对关闭率情况给出评价，提出 1～2 条优化建议
 4. 最后一行单独注明：（本报告由 AI 辅助生成）`
-      setAiText(await callAIChat(prompt))
+      const result = await callAIChat(prompt)
+      setAiText(result ?? buildConsultingPlaceholder(year, month, stats))
     } catch (e) {
       setAiError('AI 生成失败：' + e.message)
     } finally {

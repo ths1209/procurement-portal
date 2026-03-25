@@ -56,14 +56,19 @@ function TypeBadge({ type }) {
     </span>
   )
 }
+const STATUS_CFG = {
+  'OPEN':       { color: '#F59E0B', bg: 'rgba(245,158,11,0.1)',   border: 'rgba(245,158,11,0.25)'  },
+  'IN PROCESS': { color: '#3B82F6', bg: 'rgba(59,130,246,0.1)',   border: 'rgba(59,130,246,0.25)'  },
+  'PENDING':    { color: '#8B5CF6', bg: 'rgba(139,92,246,0.1)',   border: 'rgba(139,92,246,0.25)'  },
+  'CLOSE':      { color: '#10B981', bg: 'rgba(16,185,129,0.1)',   border: 'rgba(16,185,129,0.25)'  },
+}
+
 function StatusBadge({ status }) {
-  const isOpen = status !== 'CLOSE'
+  const cfg = STATUS_CFG[status] ?? { color: '#6B7280', bg: 'rgba(107,114,128,0.1)', border: 'rgba(107,114,128,0.2)' }
   return (
-    <span className="px-2 py-0.5 rounded text-xs font-medium"
-      style={isOpen
-        ? { color: '#F59E0B', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)' }
-        : { color: '#10B981', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)' }}>
-      {isOpen ? 'OPEN' : 'CLOSE'}
+    <span className="px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap"
+      style={{ color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.border}` }}>
+      {status || '—'}
     </span>
   )
 }
@@ -114,7 +119,7 @@ function EditModal({ row, onClose, onSave }) {
             <LRow label="对接人"><Input value={form[C.contact]} onChange={v => set(C.contact, v)} /></LRow>
             <LRow label="对接部门"><Input value={form[C.dept]} onChange={v => set(C.dept, v)} /></LRow>
             <LRow label="处理人"><Input value={form[C.handler]} onChange={v => set(C.handler, v)} /></LRow>
-            <LRow label="状态">
+            <LRow label="事项状态">
               <Sel value={form[C.status]} onChange={v => set(C.status, v)} options={STATUS_OPTS} />
             </LRow>
             <LRow label="受理日期"><Input value={form[C.acceptDate]} onChange={v => set(C.acceptDate, v)} type="date" /></LRow>
@@ -206,20 +211,19 @@ function DetailModal({ row, onClose, onEdit, onDelete, isAdmin }) {
 
 /* ── 可视化：统计卡片 ── */
 function StatCards({ rows }) {
-  const total  = rows.length
-  const open   = rows.filter(r => r.status !== 'CLOSE').length
-  const closed = rows.filter(r => r.status === 'CLOSE').length
-  const thisMonth = (() => {
-    const m = new Date().toISOString().slice(0, 7)
-    return rows.filter(r => r.acceptDate?.startsWith(m) || r.month?.startsWith(m)).length
-  })()
+  const total      = rows.length
+  const open       = rows.filter(r => r.status === 'OPEN').length
+  const inProcess  = rows.filter(r => r.status === 'IN PROCESS').length
+  const pending    = rows.filter(r => r.status === 'PENDING').length
+  const closed     = rows.filter(r => r.status === 'CLOSE').length
   return (
-    <div className="grid grid-cols-4 gap-3">
+    <div className="grid grid-cols-5 gap-3">
       {[
-        { label: '累计受理', value: total,      color: '#6366F1' },
-        { label: '待处理',   value: open,       color: '#F59E0B' },
-        { label: '已关闭',   value: closed,     color: '#10B981' },
-        { label: '本月新增', value: thisMonth,  color: '#0EA5E9' },
+        { label: '累计受理',   value: total,     color: '#6366F1' },
+        { label: 'OPEN',      value: open,      color: '#F59E0B' },
+        { label: 'IN PROCESS',value: inProcess, color: '#3B82F6' },
+        { label: 'PENDING',   value: pending,   color: '#8B5CF6' },
+        { label: 'CLOSE',     value: closed,    color: '#10B981' },
       ].map(s => (
         <div key={s.label} className="rounded-xl p-4 flex flex-col gap-1"
           style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
@@ -398,12 +402,12 @@ export default function Consulting() {
             </button>
           ))}
         </div>
-        <div className="flex gap-1.5">
-          {['全部', 'OPEN', 'CLOSE'].map(s => (
+        <div className="flex gap-1.5 flex-wrap">
+          {['全部', 'OPEN', 'IN PROCESS', 'PENDING', 'CLOSE'].map(s => (
             <button key={s} onClick={() => setSt(s)}
               className="px-3 py-1 rounded-full text-xs transition-all"
               style={statusFilter === s
-                ? { background: s === 'OPEN' ? '#F59E0B' : s === 'CLOSE' ? '#10B981' : '#52525B', color: '#fff' }
+                ? { background: STATUS_CFG[s]?.color ?? '#52525B', color: '#fff' }
                 : { background: 'var(--surface2)', color: 'var(--muted)', border: '1px solid var(--border)' }}>
               {s}
             </button>

@@ -44,7 +44,6 @@ export default function Dashboard() {
   const dash = useLocal('pp_dash', DEFAULT_DASH)
   const [teableData, setTeableData] = useState({ fileTools:[], urlTools:[], dashItems:[] })
   const [addGroup,  setAddGroup]  = useState(null)
-  const [preview,   setPreview]   = useState(null)
 
   const configured = isToolsConfigured()
   const fileTools = configured ? teableData.fileTools : []
@@ -137,7 +136,7 @@ export default function Dashboard() {
             <DashCard key={d._id || d.id} item={{ ...d, g: d.g ?? (idx % GRADS.length) }}
               isAdmin={isAdmin}
               onDel={() => configured ? handleDelTool(d._id) : dash.del(d.id)}
-              onPrev={() => setPreview(d.url || d.fileUrl)} />
+              onPrev={() => openPreview(d.url || d.fileUrl)} />
           ))}
           <AddCard label="添加看板" onClick={() => setAddGroup('__dash__')} />
         </div>
@@ -169,7 +168,6 @@ export default function Dashboard() {
           }} />
       )}
 
-      {preview && <PreviewModal url={preview} onClose={() => setPreview(null)} />}
     </div>
   )
 }
@@ -525,46 +523,20 @@ function AddDashModal({ onClose, onSave }) {
   )
 }
 
-// ─── 预览弹窗 ─────────────────────────────────────────────────────────────────
-function PreviewModal({ url, onClose }) {
-  useEffect(() => {
-    const handler = e => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [onClose])
-
-  return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 lg:p-8 animate-fade-in"
-      style={{ background:'rgba(0,0,0,0.75)', backdropFilter:'blur(10px)' }}
-      onClick={onClose}>
-      <div className="w-full max-w-5xl rounded-2xl overflow-hidden animate-scale-in flex flex-col shadow-2xl"
-        style={{ height:'88vh', background:'var(--surface)', border:'1px solid var(--border)' }}
-        onClick={e => e.stopPropagation()}>
-        <div className="flex items-center gap-3 px-4 py-3 shrink-0" style={{ borderBottom:'1px solid var(--border)' }}>
-          <button onClick={onClose}
-            className="press flex items-center justify-center w-7 h-7 rounded-lg shrink-0 transition-colors"
-            style={{ background:'rgba(244,63,94,0.1)', color:'#E11D48', border:'1px solid rgba(244,63,94,0.2)' }}>
-            <X className="w-3.5 h-3.5" />
-          </button>
-          <div className="flex-1 flex justify-center">
-            <div className="px-3 py-1 rounded-lg text-[11px] font-mono truncate max-w-sm"
-              style={{ background:'var(--surface2)', color:'var(--muted)', border:'1px solid var(--border)' }}>
-              {url}
-            </div>
-          </div>
-          <a href={url} target="_blank" rel="noopener noreferrer"
-            className="press flex items-center justify-center w-7 h-7 rounded-lg shrink-0"
-            style={{ background:'var(--surface2)', color:'var(--muted)' }}>
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
-        </div>
-        <iframe src={url} className="flex-1 w-full border-0" title="预览" />
-      </div>
-      <p className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px]"
-        style={{ color:'rgba(255,255,255,0.3)' }}>点击空白处或按 Esc 关闭</p>
-    </div>,
-    document.body
+// ─── 预览：弹出独立窗口（兼容内网 + X-Frame-Options 限制）────────────────────
+function openPreview(url) {
+  const w = Math.min(1280, window.screen.availWidth  - 80)
+  const h = Math.min(820,  window.screen.availHeight - 80)
+  const l = Math.round((window.screen.availWidth  - w) / 2)
+  const t = Math.round((window.screen.availHeight - h) / 2)
+  const win = window.open(
+    url, 'dash_preview',
+    `width=${w},height=${h},left=${l},top=${t},menubar=no,toolbar=no,location=yes,status=no,resizable=yes,scrollbars=yes`,
   )
+  if (!win) {
+    // 被浏览器拦截时降级为新标签
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
 }
 
 // ─── 通用弹窗（Portal，导出供 Projects.jsx 使用）──────────────────────────────

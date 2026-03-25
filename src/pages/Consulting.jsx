@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback, useDeferredValue } from 'react'
 import { createPortal } from 'react-dom'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid,
@@ -69,6 +69,18 @@ const INIT_FILTERS = {
   qType: '', qStage: '', contact: '', dept: '', handler: '',
   status: '', acceptFrom: '', acceptTo: '', q: '',
 }
+
+/* ── debounce hook ── */
+function useDebounce(value, delay = 250) {
+  const [v, setV] = useState(value)
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), delay)
+    return () => clearTimeout(t)
+  }, [value, delay])
+  return v
+}
+
+const PAGE_SIZE = 50
 
 /* ── 小组件 ── */
 function LRow({ label, children }) {
@@ -502,6 +514,7 @@ export default function Consulting() {
   const [editRow, setEdit]    = useState(null)
   const [viewRow, setView]    = useState(null)
   const [filterOpen, setFilterOpen] = useState(true)
+  const [page, setPage]             = useState(1)
 
   async function load() {
     setLoad(true); setErr('')
@@ -547,28 +560,40 @@ export default function Consulting() {
   // 是否有任何筛选条件生效
   const hasFilters = Object.values(filters).some(v => v !== '')
 
+  // 文本类筛选 debounce（250ms），避免每次击键触发全量重排）
+  const dFilters = {
+    ...filters,
+    contact: useDebounce(filters.contact),
+    dept:    useDebounce(filters.dept),
+    handler: useDebounce(filters.handler),
+    q:       useDebounce(filters.q),
+  }
+  // 非紧急渲染延迟（让输入框 & 统计卡片先响应，再渲染大表格）
+  const deferred = useDeferredValue(dFilters)
+  const isStale  = deferred !== dFilters   // 延迟期间显示轻微透明提示
+
   // 明细筛选（在财年基础上叠加所有筛选器）
   const shown = useMemo(() => {
     let r = fyRows
-    if (filters.qType)  r = r.filter(x => x.qType === filters.qType)
-    if (filters.qStage) r = r.filter(x => x.qStage === filters.qStage)
-    if (filters.status) r = r.filter(x => x.status === filters.status)
-    if (filters.contact) {
-      const q = filters.contact.toLowerCase()
+    if (deferred.qType)  r = r.filter(x => x.qType === deferred.qType)
+    if (deferred.qStage) r = r.filter(x => x.qStage === deferred.qStage)
+    if (deferred.status) r = r.filter(x => x.status === deferred.status)
+    if (deferred.contact) {
+      const q = deferred.contact.toLowerCase()
       r = r.filter(x => x.contact?.toLowerCase().includes(q))
     }
-    if (filters.dept) {
-      const q = filters.dept.toLowerCase()
+    if (deferred.dept) {
+      const q = deferred.dept.toLowerCase()
       r = r.filter(x => x.dept?.toLowerCase().includes(q))
     }
-    if (filters.handler) {
-      const q = filters.handler.toLowerCase()
+    if (deferred.handler) {
+      const q = deferred.handler.toLowerCase()
       r = r.filter(x => x.handler?.toLowerCase().includes(q))
     }
-    if (filters.acceptFrom) r = r.filter(x => (fmtDate(x.acceptDate) || '') >= filters.acceptFrom)
-    if (filters.acceptTo)   r = r.filter(x => (fmtDate(x.acceptDate) || '') <= filters.acceptTo)
-    if (filters.q) {
-      const q = filters.q.toLowerCase()
+    if (deferred.acceptFrom) r = r.filter(x => (fmtDate(x.acceptDate) || '') >= deferred.acceptFrom)
+    if (deferred.acceptTo)   r = r.filter(x => (fmtDate(x.acceptDate) || '') <= deferred.acceptTo)
+    if (deferred.q) {
+      const q = deferred.q.toLowerCase()
       r = r.filter(x => [x.question, x.contact, x.dept, x.handler, x.qStage, x.answer]
         .some(v => v?.toLowerCase().includes(q)))
     }
@@ -578,7 +603,14 @@ export default function Consulting() {
       const c = String(av).localeCompare(String(bv), 'zh-CN')
       return sortDir === 'asc' ? c : -c
     })
-  }, [fyRows, filters, sortKey, sortDir])
+  }, [fyRows, deferred, sortKey, sortDir])
+
+  // 筛选/排序/财年变化时重置到第1页
+  useEffect(() => { setPage(1) }, [fyFilter, filters, sortKey, sortDir])
+
+  // 当前页数据
+  const totalPages = Math.max(1, Math.ceil(shown.length / PAGE_SIZE))
+  const pageRows   = shown.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   async function handleSave(form) {
     if (editRow?._id) await updateRecord(editRow._id, form)
@@ -794,7 +826,7 @@ export default function Consulting() {
       </div>
 
       {/* 表格 */}
-      <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+      <div className="rounded-xl overflow-hidden transition-opacity duration-200" style={{ border: '1px solid var(--border)', opacity: isStale ? 0.6 : 1 }}>
         {/* 表头 */}
         <div style={{ display: 'grid', gridTemplateColumns: GRID_TPL, background: 'var(--surface2)', borderBottom: '1px solid var(--border)', padding: '8px 12px', gap: '0 8px', alignItems: 'center' }}>
           {COLS.map(col => (
@@ -823,7 +855,7 @@ export default function Consulting() {
             <p className="text-sm" style={{ color: 'var(--muted)' }}>暂无咨询记录</p>
           </div>
         )}
-        {!loading && shown.map((row, i) => {
+        {!loading && pageRows.map((row, i) => {
           const hColor = row.handler ? (handlerColors[row.handler] ?? null) : null
           return (
           <div key={row._id}
@@ -852,7 +884,51 @@ export default function Consulting() {
           </div>
         )})}
 
+        {/* 分页器 */}
+        {!loading && totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-2.5" style={{ borderTop: '1px solid var(--border)', background: 'var(--surface2)' }}>
+            <span className="text-xs tabular-nums" style={{ color: 'var(--muted)' }}>
+              第 {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, shown.length)} 条，共 {shown.length} 条
+            </span>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setPage(1)} disabled={page === 1}
+                className="press px-2 py-1 rounded text-xs disabled:opacity-30"
+                style={{ color: 'var(--muted)', background: 'var(--surface)', border: '1px solid var(--border)' }}>首页</button>
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                className="press px-2 py-1 rounded text-xs disabled:opacity-30"
+                style={{ color: 'var(--muted)', background: 'var(--surface)', border: '1px solid var(--border)' }}>‹ 上页</button>
+              {/* 页码 */}
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                const start = Math.max(1, Math.min(page - 2, totalPages - 4))
+                const p = start + i
+                return (
+                  <button key={p} onClick={() => setPage(p)}
+                    className="press w-7 py-1 rounded text-xs tabular-nums"
+                    style={p === page
+                      ? { background: '#6366F1', color: '#fff', border: '1px solid #6366F1' }
+                      : { color: 'var(--muted)', background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                    {p}
+                  </button>
+                )
+              })}
+              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                className="press px-2 py-1 rounded text-xs disabled:opacity-30"
+                style={{ color: 'var(--muted)', background: 'var(--surface)', border: '1px solid var(--border)' }}>下页 ›</button>
+              <button onClick={() => setPage(totalPages)} disabled={page === totalPages}
+                className="press px-2 py-1 rounded text-xs disabled:opacity-30"
+                style={{ color: 'var(--muted)', background: 'var(--surface)', border: '1px solid var(--border)' }}>末页</button>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* 表格加载中时略微透明，提示数据在更新 */}
+      {isStale && !loading && (
+        <div className="fixed bottom-4 right-6 text-[11px] px-2.5 py-1 rounded-lg"
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--muted)' }}>
+          筛选中…
+        </div>
+      )}
 
       {editRow !== null && <EditModal row={editRow || null} onClose={() => setEdit(null)} onSave={handleSave} />}
       {viewRow && <DetailModal row={viewRow} onClose={() => setView(null)}

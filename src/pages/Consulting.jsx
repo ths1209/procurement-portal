@@ -235,7 +235,7 @@ function TrendChart({ rows }) {
         <span className="text-xs font-medium" style={{ color: 'var(--text)' }}>月度受理趋势</span>
         <span className="text-[11px] ml-1" style={{ color: 'var(--muted)' }}>柱：本月受理量（已关闭/未关闭）· 折线：累计</span>
       </div>
-      <ResponsiveContainer width="100%" height={200}>
+      <ResponsiveContainer width="100%" height={220}>
         <ComposedChart data={data} margin={{ top: 8, right: 12, left: -16, bottom: 0 }} barCategoryGap="30%">
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
           <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
@@ -268,7 +268,7 @@ function TypeChart({ rows }) {
         <BarChart2 className="w-3.5 h-3.5" style={{ color: '#6366F1' }} strokeWidth={1.75} />
         <span className="text-xs font-medium" style={{ color: 'var(--text)' }}>问题类型分布</span>
       </div>
-      <div className="flex flex-col gap-2 overflow-y-auto" style={{ maxHeight: 220 }}>
+      <div className="flex flex-col gap-2">
         {data.map(([type, n]) => {
           const cfg = Q_TYPE_CFG[type] ?? { color: '#6B7280' }
           return (
@@ -349,7 +349,7 @@ function HandlerChart({ rows, handlerColors }) {
         <span className="text-right">月均</span>
       </div>
 
-      <div className="flex flex-col gap-2.5 overflow-y-auto" style={{ maxHeight: 200 }}>
+      <div className="flex flex-col gap-2.5">
         {data.map(({ handler, count, avg }) => {
           const color = handlerColors[handler] ?? '#6B7280'
           return (

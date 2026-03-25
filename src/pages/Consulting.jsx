@@ -50,8 +50,8 @@ const STATUS_CFG = {
 
 /* ── 咨询月报 AI 调用 ── */
 const OR_BASE  = 'https://openrouter.ai/api/v1'
-const OR_KEY   = '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'
-const OR_MODEL = 'z-ai/glm-4.5-air:free'
+const OR_KEY   = import.meta.env.VITE_OPENROUTER_KEY ?? ''
+const OR_MODEL = import.meta.env.VITE_OPENROUTER_MODEL ?? 'z-ai/glm-4.5-air:free'
 const AI_BASE  = (import.meta.env.VITE_AI_API_BASE ?? '').replace(/\/$/, '')
 const AI_KEY   = import.meta.env.VITE_AI_API_KEY   ?? ''
 const AI_MODEL = import.meta.env.VITE_AI_MODEL     ?? 'claude-sonnet-4.6'

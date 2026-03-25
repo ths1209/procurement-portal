@@ -51,13 +51,19 @@ const STATUS_CFG = {
 /* ── 咨询月报 AI 调用 ── */
 const OR_BASE  = 'https://openrouter.ai/api/v1'
 const OR_KEY   = import.meta.env.VITE_OPENROUTER_KEY ?? ''
-const OR_MODEL = import.meta.env.VITE_OPENROUTER_MODEL ?? 'z-ai/glm-4.5-air:free'
+// 备用模型链：主模型限速时依次尝试
+const OR_MODELS = [
+  import.meta.env.VITE_OPENROUTER_MODEL ?? 'z-ai/glm-4.5-air:free',
+  'minimax/minimax-m2.5:free',
+  'stepfun/step-3.5-flash:free',
+  'meta-llama/llama-3.2-3b-instruct:free',
+]
 const AI_BASE  = (import.meta.env.VITE_AI_API_BASE ?? '').replace(/\/$/, '')
 const AI_KEY   = import.meta.env.VITE_AI_API_KEY   ?? ''
 const AI_MODEL = import.meta.env.VITE_AI_MODEL     ?? 'claude-sonnet-4.6'
 
 async function callAIChat(prompt) {
-  // 优先尝试直连
+  // 优先尝试内网直连
   if (AI_BASE && AI_KEY && AI_BASE.startsWith('https')) {
     try {
       const res = await fetch(`${AI_BASE}/chat/completions`, {
@@ -72,15 +78,24 @@ async function callAIChat(prompt) {
       }
     } catch { /* 降级 */ }
   }
-  // OpenRouter 兜底
-  const res = await fetch(`${OR_BASE}/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OR_KEY}` },
-    body: JSON.stringify({ model: OR_MODEL, messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 700 }),
-  })
-  if (!res.ok) throw new Error(`AI 接口错误 ${res.status}`)
-  const d = await res.json()
-  return d.choices?.[0]?.message?.content?.trim() ?? '（AI 返回内容为空）'
+  // OpenRouter 备用模型链（遇到 429/403 自动换下一个）
+  if (!OR_KEY) throw new Error('未配置 OpenRouter Key')
+  let lastErr = ''
+  for (const model of OR_MODELS) {
+    try {
+      const res = await fetch(`${OR_BASE}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OR_KEY}` },
+        body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 700 }),
+      })
+      if (res.status === 429 || res.status === 403) { lastErr = `${model} 限速`; continue }
+      if (!res.ok) { lastErr = `${model} 错误 ${res.status}`; continue }
+      const d = await res.json()
+      const text = d.choices?.[0]?.message?.content?.trim()
+      if (text) return text
+    } catch (e) { lastErr = e.message }
+  }
+  throw new Error(`所有模型均不可用：${lastErr}`)
 }
 
 // 处理人颜色调色板（最多 12 人）

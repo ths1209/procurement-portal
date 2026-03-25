@@ -15,10 +15,15 @@ const AI_MODEL = import.meta.env.VITE_AI_MODEL      ?? 'claude-sonnet-4.6'
 const GH_TOKEN = import.meta.env.VITE_GITHUB_TOKEN  ?? ''
 const GH_REPO  = import.meta.env.VITE_GITHUB_REPO   ?? 'ths1209/procurement-portal'
 
-// OpenRouter 兜底（固定 key，HTTPS 可用）
-const OR_BASE  = 'https://openrouter.ai/api/v1'
-const OR_KEY   = import.meta.env.VITE_OPENROUTER_KEY   ?? ''
-const OR_MODEL = import.meta.env.VITE_OPENROUTER_MODEL ?? 'z-ai/glm-4.5-air:free'
+// OpenRouter 兜底
+const OR_BASE   = 'https://openrouter.ai/api/v1'
+const OR_KEY    = import.meta.env.VITE_OPENROUTER_KEY ?? ''
+const OR_MODELS = [
+  import.meta.env.VITE_OPENROUTER_MODEL ?? 'z-ai/glm-4.5-air:free',
+  'minimax/minimax-m2.5:free',
+  'stepfun/step-3.5-flash:free',
+  'meta-llama/llama-3.2-3b-instruct:free',
+]
 
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
@@ -140,22 +145,28 @@ async function callDirectly({ year, month, stats, rows }) {
 // ─── OpenRouter 模式 ──────────────────────────────────────────────────────────
 
 async function callOpenRouter({ year, month, stats, rows }) {
+  if (!OR_KEY) throw new Error('未配置 VITE_OPENROUTER_KEY')
   const orgLines = Object.entries(stats.byOrg).map(([o, n]) => `  - ${o}：${n} 项`).join('\n')
   const rowLines = rows.slice(0, 30).map(r =>
     `  - [${r.status || '—'}] ${r.task?.slice(0, 40) || '—'}（${r.owner || '—'}，${r.planDate?.slice(0, 10) || '—'}）`
   ).join('\n')
   const prompt = buildPrompt(year, month, stats, orgLines, rowLines)
-  const res = await fetch(`${OR_BASE}/chat/completions`, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OR_KEY}` },
-    body:    JSON.stringify({ model: OR_MODEL, messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 600 }),
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.error?.message ?? `OpenRouter 接口错误 ${res.status}`)
+  let lastErr = ''
+  for (const model of OR_MODELS) {
+    try {
+      const res = await fetch(`${OR_BASE}/chat/completions`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OR_KEY}` },
+        body:    JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 600 }),
+      })
+      if (res.status === 429 || res.status === 403) { lastErr = `${model} 限速`; continue }
+      if (!res.ok) { lastErr = `${model} 错误 ${res.status}`; continue }
+      const data = await res.json()
+      const text = data.choices?.[0]?.message?.content?.trim()
+      if (text) return text
+    } catch (e) { lastErr = e.message }
   }
-  const data = await res.json()
-  return data.choices?.[0]?.message?.content?.trim() ?? '（AI 返回内容为空）'
+  throw new Error(`所有模型均不可用：${lastErr}`)
 }
 
 // ─── 工具函数 ─────────────────────────────────────────────────────────────────

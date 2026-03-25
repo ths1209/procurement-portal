@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useDeferredValue } from 'react'
+import { useState, useEffect, useMemo, useDeferredValue } from 'react'
 import { createPortal } from 'react-dom'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid,
@@ -7,8 +7,9 @@ import {
 import {
   RefreshCw, Plus, Search, X, Eye, Pencil, Trash2,
   BookOpen, BarChart2, ChevronUp, ChevronDown, ChevronsUpDown,
-  Filter, RotateCcw, Users,
+  Filter, RotateCcw, Users, FileText, Sparkles, Loader2, Copy, Check,
 } from 'lucide-react'
+import { Modal } from './Dashboard'
 import { useAuth } from '../contexts/AuthContext'
 import {
   listConsulting, createRecord, updateRecord, deleteRecord,
@@ -45,6 +46,41 @@ const STATUS_CFG = {
   'IN PROCESS': { color: '#3B82F6', bg: 'rgba(59,130,246,0.1)',  border: 'rgba(59,130,246,0.3)'  },
   'PENDING':    { color: '#8B5CF6', bg: 'rgba(139,92,246,0.1)',  border: 'rgba(139,92,246,0.3)'  },
   'CLOSE':      { color: '#10B981', bg: 'rgba(16,185,129,0.1)',  border: 'rgba(16,185,129,0.3)'  },
+}
+
+/* ── 咨询月报 AI 调用 ── */
+const OR_BASE  = 'https://openrouter.ai/api/v1'
+const OR_KEY   = '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'
+const OR_MODEL = 'openai/gpt-4o-mini'
+const AI_BASE  = (import.meta.env.VITE_AI_API_BASE ?? '').replace(/\/$/, '')
+const AI_KEY   = import.meta.env.VITE_AI_API_KEY   ?? ''
+const AI_MODEL = import.meta.env.VITE_AI_MODEL     ?? 'claude-sonnet-4.6'
+
+async function callAIChat(prompt) {
+  // 优先尝试直连
+  if (AI_BASE && AI_KEY && AI_BASE.startsWith('https')) {
+    try {
+      const res = await fetch(`${AI_BASE}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${AI_KEY}` },
+        body: JSON.stringify({ model: AI_MODEL, messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 700 }),
+      })
+      if (res.ok) {
+        const d = await res.json()
+        const text = d.choices?.[0]?.message?.content?.trim()
+        if (text) return text
+      }
+    } catch { /* 降级 */ }
+  }
+  // OpenRouter 兜底
+  const res = await fetch(`${OR_BASE}/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OR_KEY}` },
+    body: JSON.stringify({ model: OR_MODEL, messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 700 }),
+  })
+  if (!res.ok) throw new Error(`AI 接口错误 ${res.status}`)
+  const d = await res.json()
+  return d.choices?.[0]?.message?.content?.trim() ?? '（AI 返回内容为空）'
 }
 
 // 处理人颜色调色板（最多 12 人）
@@ -235,7 +271,7 @@ function TrendChart({ rows }) {
         <span className="text-xs font-medium" style={{ color: 'var(--text)' }}>月度受理趋势</span>
         <span className="text-[11px] ml-1" style={{ color: 'var(--muted)' }}>柱：本月受理量（已关闭/未关闭）· 折线：累计</span>
       </div>
-      <ResponsiveContainer width="100%" height={220}>
+      <ResponsiveContainer width="100%" height={200}>
         <ComposedChart data={data} margin={{ top: 8, right: 12, left: -16, bottom: 0 }} barCategoryGap="30%">
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
           <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
@@ -268,7 +304,7 @@ function TypeChart({ rows }) {
         <BarChart2 className="w-3.5 h-3.5" style={{ color: '#6366F1' }} strokeWidth={1.75} />
         <span className="text-xs font-medium" style={{ color: 'var(--text)' }}>问题类型分布</span>
       </div>
-      <div className="scroll-thin flex flex-col gap-2" style={{ maxHeight: 220 }}>
+      <div className="flex flex-col gap-2 overflow-y-auto" style={{ maxHeight: 220 }}>
         {data.map(([type, n]) => {
           const cfg = Q_TYPE_CFG[type] ?? { color: '#6B7280' }
           return (
@@ -349,7 +385,7 @@ function HandlerChart({ rows, handlerColors }) {
         <span className="text-right">月均</span>
       </div>
 
-      <div className="scroll-thin flex flex-col gap-2.5" style={{ maxHeight: 220 }}>
+      <div className="flex flex-col gap-2.5 overflow-y-auto" style={{ maxHeight: 200 }}>
         {data.map(({ handler, count, avg }) => {
           const color = handlerColors[handler] ?? '#6B7280'
           return (
@@ -498,6 +534,272 @@ function DetailModal({ row, onClose, onEdit, onDelete, isAdmin }) {
   )
 }
 
+/* ── 咨询月报弹窗 ── */
+function ConsultingMonthlyReport({ rows, onClose }) {
+  const now = new Date()
+  const [year,  setYear]  = useState(now.getFullYear())
+  const [month, setMonth] = useState(now.getMonth() + 1)
+  const [copied,    setCopied]    = useState(false)
+  const [aiText,    setAiText]    = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError,   setAiError]   = useState('')
+  const [aiProgress, setAiProgress] = useState('')
+
+  function changeDate(y, m) { setYear(y); setMonth(m); setAiText(''); setAiError('') }
+
+  // 按受理日期筛选本月
+  const monthRows = useMemo(() => rows.filter(r => {
+    const d = fmtDate(r.acceptDate)
+    if (!d) return false
+    return +d.slice(0, 4) === year && +d.slice(5, 7) === month
+  }), [rows, year, month])
+
+  const stats = useMemo(() => {
+    const total  = monthRows.length
+    const closed = monthRows.filter(r => r.status === 'CLOSE').length
+    const open   = monthRows.filter(r => r.status === 'OPEN').length
+    const inProc = monthRows.filter(r => r.status === 'IN PROCESS').length
+    const closeRate = total > 0 ? Math.round(closed / total * 100) : 0
+    // 按类型统计（取前 6）
+    const typeMap = {}
+    monthRows.forEach(r => { if (r.qType) typeMap[r.qType] = (typeMap[r.qType] ?? 0) + 1 })
+    const byType = Object.entries(typeMap).sort(([, a], [, b]) => b - a).slice(0, 6)
+    // 按处理人统计
+    const handlerMap = {}
+    monthRows.forEach(r => { if (r.handler) handlerMap[r.handler] = (handlerMap[r.handler] ?? 0) + 1 })
+    const byHandler = Object.entries(handlerMap).sort(([, a], [, b]) => b - a)
+    return { total, closed, open, inProc, closeRate, byType, byHandler }
+  }, [monthRows])
+
+  function buildText() {
+    const lines = [
+      `# ${year}年${month}月 咨询赋能台账月报`,
+      `生成时间：${new Date().toLocaleString('zh-CN')}`,
+      '',
+      '## 📊 总览',
+      `- 本月受理咨询：${stats.total} 条`,
+      `- 已关闭：${stats.closed}  处理中：${stats.inProc}  待处理：${stats.open}`,
+      `- 关闭率：${stats.closeRate}%`,
+      '',
+      '## 🗂️ 问题类型分布',
+      ...stats.byType.map(([t, n]) => `- ${t}：${n} 条`),
+      '',
+      '## 👤 处理人工作量',
+      ...stats.byHandler.map(([h, n]) => `- ${h}：${n} 条`),
+      '',
+      '## 📋 咨询明细（前30条）',
+      ...monthRows.slice(0, 30).map(r =>
+        `- [${r.status}] ${r.qType ? `【${r.qType}】` : ''}${r.question?.slice(0, 40) ?? '—'}（${r.handler ?? '—'}，${fmtDate(r.acceptDate)}）`
+      ),
+    ]
+    return lines.join('\n')
+  }
+
+  async function handleAiSummary() {
+    setAiLoading(true); setAiError(''); setAiText(''); setAiProgress('AI 分析中…')
+    try {
+      const prompt = `你是一位专业的采购管理顾问，请根据以下 ${year} 年 ${month} 月咨询赋能台账数据，生成一份简洁、专业的月度汇报（150～250字）。
+
+## 数据摘要
+- 本月受理咨询：${stats.total} 条
+- 已关闭：${stats.closed}  处理中：${stats.inProc}  待处理：${stats.open}
+- 关闭率：${stats.closeRate}%
+
+## 问题类型分布（前6）
+${stats.byType.map(([t, n]) => `  - ${t}：${n} 条`).join('\n')}
+
+## 处理人工作量
+${stats.byHandler.map(([h, n]) => `  - ${h}：${n} 条`).join('\n')}
+
+## 要求
+1. 语言正式、简洁，适合向领导汇报
+2. 点出本月咨询热点和高频问题领域
+3. 对关闭率情况给出评价，提出 1～2 条优化建议
+4. 最后一行单独注明：（本报告由 AI 辅助生成）`
+      setAiText(await callAIChat(prompt))
+    } catch (e) {
+      setAiError('AI 生成失败：' + e.message)
+    } finally {
+      setAiLoading(false); setAiProgress('')
+    }
+  }
+
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text ?? buildText())
+      setCopied(true); setTimeout(() => setCopied(false), 2000)
+    } catch { alert('复制失败，请手动选取') }
+  }
+
+  const years  = [now.getFullYear() - 1, now.getFullYear()]
+  const months = Array.from({ length: 12 }, (_, i) => i + 1)
+
+  return (
+    <Modal title="📋 咨询赋能月报" onClose={onClose}>
+      <div className="p-5 space-y-4">
+        {/* 月份选择 */}
+        <div className="flex items-center gap-2">
+          <select value={year} onChange={e => changeDate(+e.target.value, month)}
+            className="flex-1 px-3 py-1.5 rounded-lg text-sm outline-none"
+            style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)' }}>
+            {years.map(y => <option key={y}>{y}</option>)}
+          </select>
+          <select value={month} onChange={e => changeDate(year, +e.target.value)}
+            className="flex-1 px-3 py-1.5 rounded-lg text-sm outline-none"
+            style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)' }}>
+            {months.map(m => <option key={m} value={m}>{m}月</option>)}
+          </select>
+          <button onClick={() => copyText()}
+            className="press flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-semibold shrink-0"
+            style={{
+              background: copied ? 'rgba(16,185,129,0.1)' : 'rgba(99,102,241,0.08)',
+              color: copied ? '#059669' : '#6366F1',
+              border: `1px solid ${copied ? 'rgba(16,185,129,0.2)' : 'rgba(99,102,241,0.15)'}`,
+            }}>
+            {copied ? <><Check className="w-3.5 h-3.5" />已复制</> : <><Copy className="w-3.5 h-3.5" />复制</>}
+          </button>
+        </div>
+
+        {monthRows.length === 0 ? (
+          <div className="text-center py-8">
+            <p className="text-4xl mb-2">📭</p>
+            <p className="text-sm" style={{ color: 'var(--muted)' }}>{year}年{month}月暂无咨询数据</p>
+          </div>
+        ) : (
+          <>
+            {/* 统计卡片 */}
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                { label: '受理总量', val: stats.total,     clr: '#6366F1' },
+                { label: '已关闭',   val: stats.closed,    clr: '#10B981' },
+                { label: '处理中',   val: stats.inProc,    clr: '#3B82F6' },
+                { label: '待处理',   val: stats.open,      clr: '#F59E0B' },
+              ].map(s => (
+                <div key={s.label} className="rounded-xl p-3 text-center"
+                  style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+                  <p className="text-2xl font-bold" style={{ color: s.clr }}>{s.val}</p>
+                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>{s.label}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* 关闭率进度条 */}
+            <div>
+              <div className="flex justify-between text-[11px] mb-1.5" style={{ color: 'var(--muted)' }}>
+                <span>关闭率</span><span className="font-semibold" style={{ color: 'var(--text)' }}>{stats.closeRate}%</span>
+              </div>
+              <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--surface2)' }}>
+                <div className="h-full rounded-full transition-all duration-700"
+                  style={{ width: `${stats.closeRate}%`, background: 'linear-gradient(90deg,#6366F1,#10B981)' }} />
+              </div>
+            </div>
+
+            {/* 问题类型 + 处理人 */}
+            <div className="grid grid-cols-2 gap-3">
+              {/* 问题类型 */}
+              <div>
+                <p className="text-[11px] font-semibold mb-2" style={{ color: 'var(--muted)' }}>问题类型分布</p>
+                <div className="flex flex-col gap-1.5">
+                  {stats.byType.map(([t, n]) => {
+                    const cfg = Q_TYPE_CFG[t] ?? { color: '#6B7280' }
+                    return (
+                      <div key={t} className="flex items-center gap-2">
+                        <span className="text-[11px] truncate shrink-0" style={{ color: 'var(--muted)', width: '5.5rem' }}>{t}</span>
+                        <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--surface2)' }}>
+                          <div className="h-full rounded-full" style={{ width: `${(n / stats.byType[0][1]) * 100}%`, background: cfg.color }} />
+                        </div>
+                        <span className="text-[11px] w-5 text-right font-semibold shrink-0" style={{ color: 'var(--text)' }}>{n}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* 处理人 */}
+              <div>
+                <p className="text-[11px] font-semibold mb-2" style={{ color: 'var(--muted)' }}>处理人工作量</p>
+                <div className="flex flex-col gap-1.5">
+                  {stats.byHandler.map(([h, n]) => (
+                    <div key={h} className="flex items-center gap-2">
+                      <span className="text-[11px] w-12 shrink-0 truncate" style={{ color: 'var(--muted)' }}>{h}</span>
+                      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--surface2)' }}>
+                        <div className="h-full rounded-full" style={{ width: `${(n / stats.byHandler[0][1]) * 100}%`, background: '#6366F1' }} />
+                      </div>
+                      <span className="text-[11px] w-5 text-right font-semibold shrink-0" style={{ color: 'var(--text)' }}>{n}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* 咨询明细列表 */}
+            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+              <div className="px-3 py-2" style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
+                <p className="text-[11px] font-semibold" style={{ color: 'var(--muted)' }}>
+                  咨询明细（{monthRows.length} 条）
+                </p>
+              </div>
+              <div className="scroll-thin" style={{ maxHeight: 200 }}>
+                {monthRows.map(r => {
+                  const scfg = STATUS_CFG[r.status] ?? { color: '#6B7280', bg: 'rgba(107,114,128,0.1)' }
+                  const tcfg = Q_TYPE_CFG[r.qType]  ?? { color: '#6B7280', bg: 'rgba(107,114,128,0.1)' }
+                  return (
+                    <div key={r._id} className="flex items-start gap-2 px-3 py-2"
+                      style={{ borderTop: '1px solid var(--border)' }}>
+                      <span className="text-[11px] shrink-0 px-1.5 py-0.5 rounded font-medium"
+                        style={{ color: scfg.color, background: scfg.bg }}>{r.status || '—'}</span>
+                      {r.qType && (
+                        <span className="text-[10px] shrink-0 px-1.5 py-0.5 rounded"
+                          style={{ color: tcfg.color, background: tcfg.bg }}>{r.qType}</span>
+                      )}
+                      <span className="flex-1 text-xs truncate" style={{ color: 'var(--text)' }}>{r.question || '—'}</span>
+                      <span className="text-[11px] shrink-0" style={{ color: 'var(--muted)' }}>{r.handler || ''}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* AI 一键总结 */}
+        {monthRows.length > 0 && (
+          <div className="space-y-2">
+            <button onClick={handleAiSummary} disabled={aiLoading}
+              className="press w-full flex items-center justify-center gap-2 py-2.5 text-sm font-semibold rounded-xl disabled:opacity-60"
+              style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.12),rgba(139,92,246,0.12))', color: '#7C3AED', border: '1px solid rgba(139,92,246,0.2)' }}>
+              {aiLoading
+                ? <><Loader2 className="w-4 h-4 animate-spin" />{aiProgress || 'AI 生成中…'}</>
+                : <><Sparkles className="w-4 h-4" />AI 一键总结</>}
+            </button>
+            {aiError && <p className="text-[12px] text-center" style={{ color: '#F43F5E' }}>{aiError}</p>}
+            {aiText && (
+              <div className="rounded-xl p-4 space-y-2"
+                style={{ background: 'rgba(139,92,246,0.05)', border: '1px solid rgba(139,92,246,0.15)' }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5" style={{ color: '#7C3AED' }} />
+                    <span className="text-[11px] font-semibold" style={{ color: '#7C3AED' }}>AI 生成汇报</span>
+                  </div>
+                  <button onClick={() => copyText(aiText)}
+                    className="press flex items-center gap-1 text-[11px]" style={{ color: 'var(--muted)' }}>
+                    {copied ? <><Check className="w-3 h-3 text-green-500" />已复制</> : <><Copy className="w-3 h-3" />复制</>}
+                  </button>
+                </div>
+                <p className="text-[13px] leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--text)' }}>{aiText}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        <button onClick={onClose}
+          className="press w-full py-2.5 text-sm font-semibold rounded-xl"
+          style={{ background: 'var(--surface2)', color: 'var(--muted)' }}>关闭</button>
+      </div>
+    </Modal>
+  )
+}
+
 /* ── 主页面 ── */
 export default function Consulting() {
   const { profile } = useAuth()
@@ -513,8 +815,9 @@ export default function Consulting() {
   const [sortDir, setSortDir] = useState('desc')
   const [editRow, setEdit]    = useState(null)
   const [viewRow, setView]    = useState(null)
-  const [filterOpen, setFilterOpen] = useState(true)
-  const [page, setPage]             = useState(1)
+  const [filterOpen, setFilterOpen]   = useState(true)
+  const [page, setPage]               = useState(1)
+  const [reportOpen, setReportOpen]   = useState(false)
 
   async function load() {
     setLoad(true); setErr('')
@@ -650,6 +953,11 @@ export default function Consulting() {
             style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
             <RefreshCw className="w-4 h-4"
               style={{ color: 'var(--muted)', animation: loading ? 'spin 1s linear infinite' : '' }} strokeWidth={1.75} />
+          </button>
+          <button onClick={() => setReportOpen(true)}
+            className="press flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium"
+            style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)' }}>
+            <FileText className="w-4 h-4" strokeWidth={1.75} />月报
           </button>
           <button onClick={() => setEdit(false)}
             className="press flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white"
@@ -930,6 +1238,7 @@ export default function Consulting() {
         </div>
       )}
 
+      {reportOpen && <ConsultingMonthlyReport rows={rows} onClose={() => setReportOpen(false)} />}
       {editRow !== null && <EditModal row={editRow || null} onClose={() => setEdit(null)} onSave={handleSave} />}
       {viewRow && <DetailModal row={viewRow} onClose={() => setView(null)}
         onEdit={r => { setView(null); setEdit(r) }} onDelete={handleDelete} isAdmin={isAdmin} />}

@@ -7,7 +7,7 @@ import {
 import {
   RefreshCw, Plus, Search, X, Eye, Pencil, Trash2,
   BookOpen, BarChart2, ChevronUp, ChevronDown, ChevronsUpDown,
-  Filter, RotateCcw,
+  Filter, RotateCcw, Users,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import {
@@ -45,6 +45,24 @@ const STATUS_CFG = {
   'IN PROCESS': { color: '#3B82F6', bg: 'rgba(59,130,246,0.1)',  border: 'rgba(59,130,246,0.3)'  },
   'PENDING':    { color: '#8B5CF6', bg: 'rgba(139,92,246,0.1)',  border: 'rgba(139,92,246,0.3)'  },
   'CLOSE':      { color: '#10B981', bg: 'rgba(16,185,129,0.1)',  border: 'rgba(16,185,129,0.3)'  },
+}
+
+// 处理人颜色调色板（最多 12 人）
+const HANDLER_PALETTE = [
+  '#6366F1', '#10B981', '#F59E0B', '#3B82F6', '#EC4899',
+  '#8B5CF6', '#14B8A6', '#F97316', '#06B6D4', '#EF4444',
+  '#84CC16', '#A78BFA',
+]
+function buildHandlerColors(rows) {
+  const map = {}
+  let idx = 0
+  rows.forEach(r => {
+    if (r.handler && !(r.handler in map)) {
+      map[r.handler] = HANDLER_PALETTE[idx % HANDLER_PALETTE.length]
+      idx++
+    }
+  })
+  return map
 }
 
 const INIT_FILTERS = {
@@ -257,6 +275,40 @@ function TypeChart({ rows }) {
   )
 }
 
+/* ── 处理人分布图 ── */
+function HandlerChart({ rows, handlerColors }) {
+  const data = useMemo(() => {
+    const m = {}
+    rows.forEach(r => { if (r.handler) m[r.handler] = (m[r.handler] ?? 0) + 1 })
+    return Object.entries(m).sort(([, a], [, b]) => b - a)
+  }, [rows])
+  if (!data.length) return null
+  const max = data[0][1]
+  return (
+    <div className="rounded-xl p-4 flex flex-col gap-2.5" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <div className="flex items-center gap-2">
+        <Users className="w-3.5 h-3.5" style={{ color: '#10B981' }} strokeWidth={1.75} />
+        <span className="text-xs font-medium" style={{ color: 'var(--text)' }}>处理人分布</span>
+      </div>
+      <div className="flex flex-col gap-2 overflow-y-auto" style={{ maxHeight: 220 }}>
+        {data.map(([handler, n]) => {
+          const color = handlerColors[handler] ?? '#6B7280'
+          return (
+            <div key={handler} className="flex items-center gap-2">
+              <span className="text-[11px] w-16 shrink-0 truncate" style={{ color: 'var(--muted)' }}>{handler}</span>
+              <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'var(--surface2)' }}>
+                <div className="h-2 rounded-full transition-all duration-500"
+                  style={{ width: `${(n / max) * 100}%`, background: color }} />
+              </div>
+              <span className="text-[11px] w-6 text-right font-semibold shrink-0" style={{ color: 'var(--text)' }}>{n}</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 /* ── 新建/编辑弹窗 ── */
 function EditModal({ row, onClose, onSave }) {
   const [form, setForm] = useState(row ? {
@@ -422,6 +474,9 @@ export default function Consulting() {
     return rows.filter(r => getFY(r.acceptDate) === Number(fyFilter))
   }, [rows, fyFilter])
 
+  // 处理人颜色映射（基于全量数据，颜色稳定不变）
+  const handlerColors = useMemo(() => buildHandlerColors(rows), [rows])
+
   // 统计卡片数值（基于 fyRows）
   const stats = useMemo(() => ({
     total:     fyRows.length,
@@ -536,21 +591,27 @@ export default function Consulting() {
         })}
       </div>
 
-      {/* 统计卡片（可交互，点击筛选状态） */}
+      {/* 统计卡片（AdminPanel 风格，默认高亮累计受理） */}
       <div className="grid grid-cols-5 gap-3">
         {STAT_CARDS.map(s => {
-          const isActive = s.statusKey !== null && filters.status === s.statusKey
+          // 累计受理：无状态筛选时高亮；其他：状态匹配时高亮
+          const isActive = s.statusKey === null
+            ? filters.status === ''
+            : filters.status === s.statusKey
           return (
             <button key={s.label}
               onClick={() => s.statusKey !== null ? toggleStatFilter(s.statusKey) : setFilters(f => ({ ...f, status: '' }))}
-              className="press rounded-xl px-4 py-3 flex items-center justify-between text-left w-full transition-all duration-200"
-              style={{
-                background: isActive ? `${s.color}15` : 'var(--surface)',
-                border: isActive ? `1.5px solid ${s.color}50` : '1px solid var(--border)',
-                boxShadow: isActive ? `0 0 0 3px ${s.color}15` : 'none',
-              }}>
-              <span className="text-xs" style={{ color: isActive ? s.color : 'var(--muted)' }}>{s.label}</span>
-              <span className="text-2xl font-bold tabular-nums" style={{ color: s.color }}>{s.value}</span>
+              className="press card p-4 text-left w-full"
+              style={isActive ? {
+                borderColor: s.color,
+                boxShadow: `0 0 0 1px ${s.color}33, 0 4px 20px ${s.color}20`,
+              } : {}}>
+              <div className="flex items-center gap-1.5 mb-2" style={{ color: isActive ? s.color : 'var(--muted)' }}>
+                <span className="text-xs font-medium">{s.label}</span>
+              </div>
+              <p className="text-2xl font-bold tabular-nums" style={{ color: isActive ? s.color : 'var(--text)' }}>
+                {s.value}
+              </p>
             </button>
           )
         })}
@@ -558,8 +619,9 @@ export default function Consulting() {
 
       {/* 图表 */}
       {rows.length > 0 && (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <TypeChart rows={fyRows} />
+          <HandlerChart rows={fyRows} handlerColors={handlerColors} />
           <TrendChart rows={fyRows} />
         </div>
       )}
@@ -708,10 +770,17 @@ export default function Consulting() {
             <p className="text-sm" style={{ color: 'var(--muted)' }}>暂无咨询记录</p>
           </div>
         )}
-        {!loading && shown.map((row, i) => (
+        {!loading && shown.map((row, i) => {
+          const hColor = row.handler ? (handlerColors[row.handler] ?? null) : null
+          return (
           <div key={row._id}
             className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] cursor-pointer transition-colors"
-            style={{ display: 'grid', gridTemplateColumns: GRID_TPL, padding: '7px 12px', gap: '0 8px', alignItems: 'center', borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}
+            style={{
+              display: 'grid', gridTemplateColumns: GRID_TPL,
+              padding: '7px 12px', gap: '0 8px', alignItems: 'center',
+              borderTop: i === 0 ? 'none' : '1px solid var(--border)',
+              borderLeft: hColor ? `3px solid ${hColor}` : '3px solid transparent',
+            }}
             onClick={() => setView(row)}>
             <span className="text-xs truncate pr-1" style={{ color: 'var(--text)', minWidth: 0 }}>{row.question}</span>
             <span style={{ minWidth: 0 }}><TypeBadge type={row.qType} /></span>
@@ -728,7 +797,8 @@ export default function Consulting() {
               {isAdmin && <button onClick={() => handleDelete(row)} className="press hover:opacity-70"><Trash2 className="w-3.5 h-3.5" style={{ color: '#F87171' }} strokeWidth={1.75} /></button>}
             </div>
           </div>
-        ))}
+        )})}
+
       </div>
 
       {editRow !== null && <EditModal row={editRow || null} onClose={() => setEdit(null)} onSave={handleSave} />}

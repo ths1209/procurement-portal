@@ -268,7 +268,7 @@ function TypeChart({ rows }) {
         <BarChart2 className="w-3.5 h-3.5" style={{ color: '#6366F1' }} strokeWidth={1.75} />
         <span className="text-xs font-medium" style={{ color: 'var(--text)' }}>问题类型分布</span>
       </div>
-      <div className="flex flex-col gap-2">
+      <div className="scroll-thin flex flex-col gap-2" style={{ maxHeight: 220 }}>
         {data.map(([type, n]) => {
           const cfg = Q_TYPE_CFG[type] ?? { color: '#6B7280' }
           return (
@@ -349,7 +349,7 @@ function HandlerChart({ rows, handlerColors }) {
         <span className="text-right">月均</span>
       </div>
 
-      <div className="flex flex-col gap-2.5">
+      <div className="scroll-thin flex flex-col gap-2.5" style={{ maxHeight: 220 }}>
         {data.map(({ handler, count, avg }) => {
           const color = handlerColors[handler] ?? '#6B7280'
           return (

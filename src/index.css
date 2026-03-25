@@ -167,3 +167,18 @@
   from { opacity: 0; transform: translateY(14px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* ── 细滚动条（图表区等局部容器）─────────────────────────── */
+.scroll-thin {
+  overflow-y: auto;
+  scrollbar-gutter: stable;        /* 预留滚动条空间，防止内容被遮挡 */
+  scrollbar-width: thin;           /* Firefox */
+  scrollbar-color: var(--border) transparent;
+}
+.scroll-thin::-webkit-scrollbar       { width: 4px; }
+.scroll-thin::-webkit-scrollbar-track { background: transparent; }
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 99px;
+}
+.scroll-thin::-webkit-scrollbar-thumb:hover { background: var(--muted); }

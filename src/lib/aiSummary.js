@@ -17,8 +17,8 @@ const GH_REPO  = import.meta.env.VITE_GITHUB_REPO   ?? 'ths1209/procurement-port
 
 // OpenRouter 兜底（固定 key，HTTPS 可用）
 const OR_BASE  = 'https://openrouter.ai/api/v1'
-const OR_KEY   = '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'
-const OR_MODEL = 'openai/gpt-4o-mini'
+const OR_KEY   = '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'
+const OR_MODEL = 'minimax/minimax-m2.5:free'
 
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 

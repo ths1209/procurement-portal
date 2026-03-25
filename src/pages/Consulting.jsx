@@ -277,30 +277,83 @@ function TypeChart({ rows }) {
 
 /* ── 处理人分布图 ── */
 function HandlerChart({ rows, handlerColors }) {
+  const now = new Date()
+
   const data = useMemo(() => {
+    // 统计每个处理人：总量 + 首次受理日期
     const m = {}
-    rows.forEach(r => { if (r.handler) m[r.handler] = (m[r.handler] ?? 0) + 1 })
-    return Object.entries(m).sort(([, a], [, b]) => b - a)
+    rows.forEach(r => {
+      if (!r.handler) return
+      const d = fmtDate(r.acceptDate)
+      if (!m[r.handler]) m[r.handler] = { count: 0, firstDate: d || '' }
+      m[r.handler].count++
+      if (d && (!m[r.handler].firstDate || d < m[r.handler].firstDate)) {
+        m[r.handler].firstDate = d
+      }
+    })
+    // 计算月均：从首次受理日 → 今日的自然月数（至少 1 个月）
+    return Object.entries(m)
+      .map(([handler, { count, firstDate }]) => {
+        let monthsActive = 1
+        if (firstDate) {
+          const fd = new Date(firstDate)
+          monthsActive = Math.max(
+            1,
+            (now.getFullYear() - fd.getFullYear()) * 12 + (now.getMonth() - fd.getMonth()) + 1
+          )
+        }
+        const avg = (count / monthsActive).toFixed(1)
+        return { handler, count, avg: parseFloat(avg), monthsActive }
+      })
+      .sort((a, b) => b.count - a.count)
   }, [rows])
+
   if (!data.length) return null
-  const max = data[0][1]
+  const maxCount = data[0].count
+  const maxAvg   = Math.max(...data.map(d => d.avg))
+
   return (
     <div className="rounded-xl p-4 flex flex-col gap-2.5" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-      <div className="flex items-center gap-2">
-        <Users className="w-3.5 h-3.5" style={{ color: '#10B981' }} strokeWidth={1.75} />
-        <span className="text-xs font-medium" style={{ color: 'var(--text)' }}>处理人分布</span>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Users className="w-3.5 h-3.5" style={{ color: '#10B981' }} strokeWidth={1.75} />
+          <span className="text-xs font-medium" style={{ color: 'var(--text)' }}>处理人分布</span>
+        </div>
+        <div className="flex items-center gap-3 text-[10px]" style={{ color: 'var(--muted)' }}>
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-2 h-2 rounded-sm opacity-80" style={{ background: '#10B981' }} />总量
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-2 h-2 rounded-sm opacity-50" style={{ background: '#10B981' }} />月均
+          </span>
+        </div>
       </div>
-      <div className="flex flex-col gap-2 overflow-y-auto" style={{ maxHeight: 220 }}>
-        {data.map(([handler, n]) => {
+
+      {/* 列标题 */}
+      <div className="grid text-[10px] font-medium px-0.5" style={{ gridTemplateColumns: '4rem 1fr 2.8rem 2.8rem', color: 'var(--muted)', gap: '0 6px' }}>
+        <span>处理人</span>
+        <span />
+        <span className="text-right">总量</span>
+        <span className="text-right">月均</span>
+      </div>
+
+      <div className="flex flex-col gap-2.5 overflow-y-auto" style={{ maxHeight: 200 }}>
+        {data.map(({ handler, count, avg }) => {
           const color = handlerColors[handler] ?? '#6B7280'
           return (
-            <div key={handler} className="flex items-center gap-2">
-              <span className="text-[11px] w-16 shrink-0 truncate" style={{ color: 'var(--muted)' }}>{handler}</span>
-              <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'var(--surface2)' }}>
-                <div className="h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${(n / max) * 100}%`, background: color }} />
+            <div key={handler} className="grid items-center" style={{ gridTemplateColumns: '4rem 1fr 2.8rem 2.8rem', gap: '0 6px' }}>
+              <span className="text-[11px] truncate" style={{ color: 'var(--muted)' }}>{handler}</span>
+              {/* 双层进度条：底层月均（浅），上层总量（实色） */}
+              <div className="relative h-3 rounded-full overflow-hidden" style={{ background: 'var(--surface2)' }}>
+                {/* 月均条（浅色背景） */}
+                <div className="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
+                  style={{ width: `${(avg / maxAvg) * 100}%`, background: color, opacity: 0.25 }} />
+                {/* 总量条（实色，较细） */}
+                <div className="absolute top-[3px] bottom-[3px] left-0 rounded-full transition-all duration-500"
+                  style={{ width: `${(count / maxCount) * 100}%`, background: color }} />
               </div>
-              <span className="text-[11px] w-6 text-right font-semibold shrink-0" style={{ color: 'var(--text)' }}>{n}</span>
+              <span className="text-[11px] text-right font-semibold tabular-nums" style={{ color: 'var(--text)' }}>{count}</span>
+              <span className="text-[11px] text-right tabular-nums" style={{ color: color }}>{avg}/月</span>
             </div>
           )
         })}

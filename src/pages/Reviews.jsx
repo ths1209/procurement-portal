@@ -86,15 +86,15 @@ function EditModal({ row, onClose, onSave }) {
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in"
       style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)' }}>
-      <div className="w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh]"
+      <div className="w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] animate-scale-in"
         style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
         <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--border)' }}>
           <span className="font-semibold text-sm" style={{ color: 'var(--text)' }}>
             {row ? '编辑评审记录' : '新建评审记录'}
           </span>
-          <button onClick={onClose} className="p-1 rounded hover:opacity-70">
+          <button onClick={onClose} className="press p-1 rounded hover:opacity-70">
             <X className="w-4 h-4" style={{ color: 'var(--muted)' }} />
           </button>
         </div>
@@ -113,9 +113,9 @@ function EditModal({ row, onClose, onSave }) {
           {err && <p className="text-xs text-red-400">{err}</p>}
         </div>
         <div className="px-5 py-4 flex justify-end gap-2" style={{ borderTop: '1px solid var(--border)' }}>
-          <button onClick={onClose} className="px-4 py-1.5 rounded-lg text-sm" style={{ color: 'var(--muted)' }}>取消</button>
+          <button onClick={onClose} className="press px-4 py-1.5 rounded-lg text-sm" style={{ color: 'var(--muted)' }}>取消</button>
           <button onClick={handleSave} disabled={saving}
-            className="px-4 py-1.5 rounded-lg text-sm font-medium text-white"
+            className="press px-4 py-1.5 rounded-lg text-sm font-medium text-white"
             style={{ background: '#6366F1', opacity: saving ? 0.6 : 1 }}>
             {saving ? '保存中…' : '保存'}
           </button>
@@ -129,9 +129,9 @@ function EditModal({ row, onClose, onSave }) {
 /* ── 详情弹窗 ── */
 function DetailModal({ row, onClose, onEdit, onDelete, isAdmin }) {
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in"
       style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)' }}>
-      <div className="w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh]"
+      <div className="w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] animate-scale-in"
         style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
         <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--border)' }}>
           <div className="flex items-center gap-2">
@@ -139,7 +139,7 @@ function DetailModal({ row, onClose, onEdit, onDelete, isAdmin }) {
             <span className="font-semibold text-sm" style={{ color: 'var(--text)' }}>{row.name}</span>
             <Badge val={row.conclusion} />
           </div>
-          <button onClick={onClose} className="p-1 rounded hover:opacity-70">
+          <button onClick={onClose} className="press p-1 rounded hover:opacity-70">
             <X className="w-4 h-4" style={{ color: 'var(--muted)' }} />
           </button>
         </div>
@@ -169,13 +169,13 @@ function DetailModal({ row, onClose, onEdit, onDelete, isAdmin }) {
         </div>
         <div className="px-5 py-4 flex justify-between" style={{ borderTop: '1px solid var(--border)' }}>
           {isAdmin
-            ? <button onClick={() => onDelete(row)} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1">
+            ? <button onClick={() => onDelete(row)} className="press text-xs text-red-400 hover:text-red-300 flex items-center gap-1">
                 <Trash2 className="w-3.5 h-3.5" /> 删除
               </button>
             : <span />}
           <div className="flex gap-2">
-            <button onClick={onClose} className="px-4 py-1.5 rounded-lg text-sm" style={{ color: 'var(--muted)' }}>关闭</button>
-            <button onClick={() => onEdit(row)} className="px-4 py-1.5 rounded-lg text-sm font-medium"
+            <button onClick={onClose} className="press px-4 py-1.5 rounded-lg text-sm" style={{ color: 'var(--muted)' }}>关闭</button>
+            <button onClick={() => onEdit(row)} className="press px-4 py-1.5 rounded-lg text-sm font-medium"
               style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }}>
               <Pencil className="w-3.5 h-3.5 inline mr-1" />编辑
             </button>
@@ -250,7 +250,7 @@ export default function Reviews() {
   ]
 
   return (
-    <div className="p-5 max-w-6xl mx-auto space-y-5">
+    <div className="p-5 max-w-6xl mx-auto space-y-5 animate-page-in">
       {/* 页头 */}
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -265,12 +265,12 @@ export default function Reviews() {
         </div>
         <div className="flex items-center gap-2">
           <button onClick={load} disabled={loading}
-            className="p-2 rounded-lg transition-opacity hover:opacity-70"
+            className="press p-2 rounded-lg hover:opacity-70"
             style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
             <RefreshCw className="w-4 h-4" style={{ color: 'var(--muted)', animation: loading ? 'spin 1s linear infinite' : '' }} strokeWidth={1.75} />
           </button>
           <button onClick={() => setEdit(false)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white"
+            className="press flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white"
             style={{ background: '#6366F1' }}>
             <Plus className="w-4 h-4" strokeWidth={2} />新建
           </button>

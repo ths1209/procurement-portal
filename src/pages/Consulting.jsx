@@ -7,6 +7,7 @@ import {
 import {
   RefreshCw, Plus, Search, X, Eye, Pencil, Trash2,
   BookOpen, BarChart2, ChevronUp, ChevronDown, ChevronsUpDown,
+  Filter, RotateCcw,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import {
@@ -44,6 +45,11 @@ const STATUS_CFG = {
   'IN PROCESS': { color: '#3B82F6', bg: 'rgba(59,130,246,0.1)',  border: 'rgba(59,130,246,0.3)'  },
   'PENDING':    { color: '#8B5CF6', bg: 'rgba(139,92,246,0.1)',  border: 'rgba(139,92,246,0.3)'  },
   'CLOSE':      { color: '#10B981', bg: 'rgba(16,185,129,0.1)',  border: 'rgba(16,185,129,0.3)'  },
+}
+
+const INIT_FILTERS = {
+  qType: '', qStage: '', contact: '', dept: '', handler: '',
+  status: '', acceptFrom: '', acceptTo: '', q: '',
 }
 
 /* ── 小组件 ── */
@@ -98,20 +104,38 @@ function StatusBadge({ status }) {
     </span>
   )
 }
-function Chip({ active, color, onClick, children }) {
-  return (
-    <button onClick={onClick}
-      className="px-2.5 py-0.5 rounded-full text-xs transition-all whitespace-nowrap"
-      style={active
-        ? { background: color ?? '#6366F1', color: '#fff' }
-        : { background: 'var(--surface2)', color: 'var(--muted)', border: '1px solid var(--border)' }}>
-      {children}
-    </button>
-  )
-}
 function SortIcon({ field, sortKey, sortDir }) {
   if (sortKey !== field) return <ChevronsUpDown className="w-3 h-3 opacity-30" />
   return sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+}
+
+/* ── 筛选输入框（小尺寸） ── */
+function FilterInput({ value, onChange, placeholder, icon: Icon }) {
+  return (
+    <div className="relative">
+      {Icon && <Icon className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--muted)' }} />}
+      <input value={value} onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full py-1.5 rounded-lg text-xs outline-none transition-colors"
+        style={{
+          paddingLeft: Icon ? '1.75rem' : '0.625rem',
+          paddingRight: '0.625rem',
+          background: 'var(--surface2)',
+          border: '1px solid var(--border)',
+          color: 'var(--text)',
+        }} />
+    </div>
+  )
+}
+function FilterSelect({ value, onChange, options, placeholder }) {
+  return (
+    <select value={value} onChange={e => onChange(e.target.value)}
+      className="w-full px-2.5 py-1.5 rounded-lg text-xs outline-none transition-colors appearance-none"
+      style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: value ? 'var(--text)' : 'var(--muted)' }}>
+      <option value="">{placeholder ?? '全部'}</option>
+      {options.map(o => <option key={o} value={o}>{o}</option>)}
+    </select>
+  )
 }
 
 /* ── 表格列 ── */
@@ -163,7 +187,6 @@ function TrendChart({ rows }) {
       else map[k].未关闭++
     })
     const arr = Object.values(map).sort((a, b) => a.month.localeCompare(b.month))
-    // 累计受理
     let cum = 0
     arr.forEach(d => { cum += d.受理; d.累计 = cum })
     return arr
@@ -183,8 +206,7 @@ function TrendChart({ rows }) {
         <span className="text-[11px] ml-1" style={{ color: 'var(--muted)' }}>柱：本月受理量（已关闭/未关闭）· 折线：累计</span>
       </div>
       <ResponsiveContainer width="100%" height={200}>
-        <ComposedChart data={data} margin={{ top: 8, right: 12, left: -16, bottom: 0 }}
-          barCategoryGap="30%">
+        <ComposedChart data={data} margin={{ top: 8, right: 12, left: -16, bottom: 0 }} barCategoryGap="30%">
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
           <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
           <YAxis yAxisId="left" tick={{ fontSize: 11, fill: 'var(--muted)' }} axisLine={false} tickLine={false} />
@@ -194,8 +216,7 @@ function TrendChart({ rows }) {
           <Bar yAxisId="left" dataKey="已关闭" name="已关闭" stackId="a" fill="#10B981" radius={[0, 0, 4, 4]} />
           <Bar yAxisId="left" dataKey="未关闭" name="未关闭" stackId="a" fill="#6366F1" opacity={0.6} radius={[4, 4, 0, 0]} />
           <Line yAxisId="right" dataKey="累计" name="累计受理" type="monotone"
-            stroke="#F59E0B" strokeWidth={2} dot={{ r: 3, fill: '#F59E0B' }}
-            activeDot={{ r: 5 }} />
+            stroke="#F59E0B" strokeWidth={2} dot={{ r: 3, fill: '#F59E0B' }} activeDot={{ r: 5 }} />
         </ComposedChart>
       </ResponsiveContainer>
     </div>
@@ -224,7 +245,8 @@ function TypeChart({ rows }) {
             <div key={type} className="flex items-center gap-2">
               <span className="text-[11px] w-24 shrink-0 truncate" style={{ color: 'var(--muted)' }}>{type}</span>
               <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'var(--surface2)' }}>
-                <div className="h-2 rounded-full" style={{ width: `${(n / max) * 100}%`, background: cfg.color }} />
+                <div className="h-2 rounded-full transition-all duration-500"
+                  style={{ width: `${(n / max) * 100}%`, background: cfg.color }} />
               </div>
               <span className="text-[11px] w-6 text-right font-semibold shrink-0" style={{ color: 'var(--text)' }}>{n}</span>
             </div>
@@ -253,13 +275,15 @@ function EditModal({ row, onClose, onSave }) {
     try { await onSave(form) } catch (e) { setErr(e.message); setSaving(false) }
   }
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in"
       style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)' }}>
-      <div className="w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh]"
+      <div className="w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] animate-scale-in"
         style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
         <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--border)' }}>
           <span className="font-semibold text-sm" style={{ color: 'var(--text)' }}>{row ? '编辑' : '新建'}咨询记录</span>
-          <button onClick={onClose}><X className="w-4 h-4" style={{ color: 'var(--muted)' }} /></button>
+          <button onClick={onClose} className="press p-1 rounded-lg hover:opacity-70">
+            <X className="w-4 h-4" style={{ color: 'var(--muted)' }} />
+          </button>
         </div>
         <div className="p-5 overflow-y-auto flex flex-col gap-4">
           <LRow label="咨询和受理问题 *"><FTextarea value={form[C.question]} onChange={v => set(C.question, v)} rows={3} /></LRow>
@@ -278,9 +302,9 @@ function EditModal({ row, onClose, onSave }) {
           {err && <p className="text-xs text-red-400">{err}</p>}
         </div>
         <div className="px-5 py-3 flex justify-end gap-2" style={{ borderTop: '1px solid var(--border)' }}>
-          <button onClick={onClose} className="px-4 py-1.5 rounded-lg text-sm" style={{ color: 'var(--muted)' }}>取消</button>
+          <button onClick={onClose} className="press px-4 py-1.5 rounded-lg text-sm" style={{ color: 'var(--muted)' }}>取消</button>
           <button onClick={submit} disabled={saving}
-            className="px-4 py-1.5 rounded-lg text-sm font-medium text-white"
+            className="press px-4 py-1.5 rounded-lg text-sm font-medium text-white"
             style={{ background: '#6366F1', opacity: saving ? 0.6 : 1 }}>
             {saving ? '保存中…' : '保存'}
           </button>
@@ -294,15 +318,17 @@ function EditModal({ row, onClose, onSave }) {
 /* ── 详情弹窗 ── */
 function DetailModal({ row, onClose, onEdit, onDelete, isAdmin }) {
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in"
       style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(8px)' }}>
-      <div className="w-full max-w-xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh]"
+      <div className="w-full max-w-xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] animate-scale-in"
         style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
         <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--border)' }}>
           <div className="flex items-center gap-2 flex-wrap">
             <TypeBadge type={row.qType} /><StatusBadge status={row.status} />
           </div>
-          <button onClick={onClose}><X className="w-4 h-4" style={{ color: 'var(--muted)' }} /></button>
+          <button onClick={onClose} className="press p-1 rounded-lg hover:opacity-70">
+            <X className="w-4 h-4" style={{ color: 'var(--muted)' }} />
+          </button>
         </div>
         <div className="p-5 overflow-y-auto flex flex-col gap-4">
           <div>
@@ -336,14 +362,14 @@ function DetailModal({ row, onClose, onEdit, onDelete, isAdmin }) {
         </div>
         <div className="px-5 py-3 flex justify-between items-center" style={{ borderTop: '1px solid var(--border)' }}>
           {isAdmin
-            ? <button onClick={() => onDelete(row)} className="text-xs text-red-400 flex items-center gap-1 hover:text-red-300">
+            ? <button onClick={() => onDelete(row)} className="press text-xs text-red-400 flex items-center gap-1 hover:text-red-300">
                 <Trash2 className="w-3.5 h-3.5" /> 删除
               </button>
             : <span />}
           <div className="flex gap-2">
-            <button onClick={onClose} className="px-3 py-1.5 rounded-lg text-sm" style={{ color: 'var(--muted)' }}>关闭</button>
+            <button onClick={onClose} className="press px-3 py-1.5 rounded-lg text-sm" style={{ color: 'var(--muted)' }}>关闭</button>
             <button onClick={() => onEdit(row)}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1"
+              className="press px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1"
               style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }}>
               <Pencil className="w-3.5 h-3.5" />编辑
             </button>
@@ -364,14 +390,13 @@ export default function Consulting() {
   const [rows, setRows]       = useState([])
   const [loading, setLoad]    = useState(false)
   const [err, setErr]         = useState('')
-  const [search, setSearch]   = useState('')
-  const [typeFilter, setType] = useState('全部')
-  const [stFilter, setSt]     = useState('全部')
   const [fyFilter, setFY]     = useState('全部')
+  const [filters, setFilters] = useState({ ...INIT_FILTERS })
   const [sortKey, setSortKey] = useState('acceptDate')
   const [sortDir, setSortDir] = useState('desc')
   const [editRow, setEdit]    = useState(null)
   const [viewRow, setView]    = useState(null)
+  const [filterOpen, setFilterOpen] = useState(true)
 
   async function load() {
     setLoad(true); setErr('')
@@ -391,20 +416,52 @@ export default function Consulting() {
     else { setSortKey(key); setSortDir('desc') }
   }
 
-  // 按财年筛选后的数据（用于图表和明细）
+  // 按财年筛选（用于图表和统计）
   const fyRows = useMemo(() => {
     if (fyFilter === '全部') return rows
     return rows.filter(r => getFY(r.acceptDate) === Number(fyFilter))
   }, [rows, fyFilter])
 
-  // 明细筛选（在财年基础上叠加）
+  // 统计卡片数值（基于 fyRows）
+  const stats = useMemo(() => ({
+    total:     fyRows.length,
+    open:      fyRows.filter(r => r.status === 'OPEN').length,
+    inProcess: fyRows.filter(r => r.status === 'IN PROCESS').length,
+    pending:   fyRows.filter(r => r.status === 'PENDING').length,
+    closed:    fyRows.filter(r => r.status === 'CLOSE').length,
+  }), [fyRows])
+
+  // 点击统计卡片切换状态筛选
+  function toggleStatFilter(status) {
+    setFilters(f => ({ ...f, status: f.status === status ? '' : status }))
+  }
+
+  // 是否有任何筛选条件生效
+  const hasFilters = Object.values(filters).some(v => v !== '')
+
+  // 明细筛选（在财年基础上叠加所有筛选器）
   const shown = useMemo(() => {
     let r = fyRows
-    if (typeFilter !== '全部') r = r.filter(x => x.qType === typeFilter)
-    if (stFilter !== '全部') r = r.filter(x => x.status === stFilter)
-    if (search) {
-      const q = search.toLowerCase()
-      r = r.filter(x => [x.question, x.contact, x.dept, x.handler, x.qStage]
+    if (filters.qType)  r = r.filter(x => x.qType === filters.qType)
+    if (filters.qStage) r = r.filter(x => x.qStage === filters.qStage)
+    if (filters.status) r = r.filter(x => x.status === filters.status)
+    if (filters.contact) {
+      const q = filters.contact.toLowerCase()
+      r = r.filter(x => x.contact?.toLowerCase().includes(q))
+    }
+    if (filters.dept) {
+      const q = filters.dept.toLowerCase()
+      r = r.filter(x => x.dept?.toLowerCase().includes(q))
+    }
+    if (filters.handler) {
+      const q = filters.handler.toLowerCase()
+      r = r.filter(x => x.handler?.toLowerCase().includes(q))
+    }
+    if (filters.acceptFrom) r = r.filter(x => (fmtDate(x.acceptDate) || '') >= filters.acceptFrom)
+    if (filters.acceptTo)   r = r.filter(x => (fmtDate(x.acceptDate) || '') <= filters.acceptTo)
+    if (filters.q) {
+      const q = filters.q.toLowerCase()
+      r = r.filter(x => [x.question, x.contact, x.dept, x.handler, x.qStage, x.answer]
         .some(v => v?.toLowerCase().includes(q)))
     }
     return [...r].sort((a, b) => {
@@ -413,7 +470,7 @@ export default function Consulting() {
       const c = String(av).localeCompare(String(bv), 'zh-CN')
       return sortDir === 'asc' ? c : -c
     })
-  }, [fyRows, typeFilter, stFilter, search, sortKey, sortDir])
+  }, [fyRows, filters, sortKey, sortDir])
 
   async function handleSave(form) {
     if (editRow?._id) await updateRecord(editRow._id, form)
@@ -425,14 +482,16 @@ export default function Consulting() {
     try { await deleteRecord(row._id); setView(null); await load() } catch (e) { alert(e.message) }
   }
 
-  const total     = fyRows.length
-  const open      = fyRows.filter(r => r.status === 'OPEN').length
-  const inProcess = fyRows.filter(r => r.status === 'IN PROCESS').length
-  const pending   = fyRows.filter(r => r.status === 'PENDING').length
-  const closed    = fyRows.filter(r => r.status === 'CLOSE').length
+  const STAT_CARDS = [
+    { label: '累计受理',    value: stats.total,     color: '#6366F1', statusKey: null },
+    { label: 'OPEN',       value: stats.open,      color: '#F59E0B', statusKey: 'OPEN' },
+    { label: 'IN PROCESS', value: stats.inProcess, color: '#3B82F6', statusKey: 'IN PROCESS' },
+    { label: 'PENDING',    value: stats.pending,   color: '#8B5CF6', statusKey: 'PENDING' },
+    { label: 'CLOSE',      value: stats.closed,    color: '#10B981', statusKey: 'CLOSE' },
+  ]
 
   return (
-    <div className="px-5 py-4 flex flex-col gap-4">
+    <div className="px-5 py-4 flex flex-col gap-4 animate-page-in">
 
       {/* 页头 */}
       <div className="flex items-center justify-between">
@@ -447,12 +506,13 @@ export default function Consulting() {
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={load} disabled={loading} className="p-1.5 rounded-lg hover:opacity-70"
+          <button onClick={load} disabled={loading} className="press p-1.5 rounded-lg hover:opacity-70"
             style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
-            <RefreshCw className="w-4 h-4" style={{ color: 'var(--muted)', animation: loading ? 'spin 1s linear infinite' : '' }} strokeWidth={1.75} />
+            <RefreshCw className="w-4 h-4"
+              style={{ color: 'var(--muted)', animation: loading ? 'spin 1s linear infinite' : '' }} strokeWidth={1.75} />
           </button>
           <button onClick={() => setEdit(false)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white"
+            className="press flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white"
             style={{ background: '#6366F1' }}>
             <Plus className="w-4 h-4" strokeWidth={2} />新建
           </button>
@@ -466,7 +526,7 @@ export default function Consulting() {
           const active = fyFilter === String(fy)
           return (
             <button key={fy} onClick={() => setFY(String(fy))}
-              className="px-3 py-1 rounded-lg text-xs font-medium transition-all"
+              className="press px-3 py-1 rounded-lg text-xs font-medium transition-all duration-200"
               style={active
                 ? { background: '#6366F1', color: '#fff', boxShadow: '0 2px 8px rgba(99,102,241,0.3)' }
                 : { background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)' }}>
@@ -476,21 +536,24 @@ export default function Consulting() {
         })}
       </div>
 
-      {/* 统计卡片 */}
+      {/* 统计卡片（可交互，点击筛选状态） */}
       <div className="grid grid-cols-5 gap-3">
-        {[
-          { label: '累计受理',    v: total,     color: '#6366F1' },
-          { label: 'OPEN',       v: open,      color: '#F59E0B' },
-          { label: 'IN PROCESS', v: inProcess, color: '#3B82F6' },
-          { label: 'PENDING',    v: pending,   color: '#8B5CF6' },
-          { label: 'CLOSE',      v: closed,    color: '#10B981' },
-        ].map(s => (
-          <div key={s.label} className="rounded-xl px-4 py-3 flex items-center justify-between"
-            style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-            <span className="text-xs" style={{ color: 'var(--muted)' }}>{s.label}</span>
-            <span className="text-2xl font-bold" style={{ color: s.color }}>{s.v}</span>
-          </div>
-        ))}
+        {STAT_CARDS.map(s => {
+          const isActive = s.statusKey !== null && filters.status === s.statusKey
+          return (
+            <button key={s.label}
+              onClick={() => s.statusKey !== null ? toggleStatFilter(s.statusKey) : setFilters(f => ({ ...f, status: '' }))}
+              className="press rounded-xl px-4 py-3 flex items-center justify-between text-left w-full transition-all duration-200"
+              style={{
+                background: isActive ? `${s.color}15` : 'var(--surface)',
+                border: isActive ? `1.5px solid ${s.color}50` : '1px solid var(--border)',
+                boxShadow: isActive ? `0 0 0 3px ${s.color}15` : 'none',
+              }}>
+              <span className="text-xs" style={{ color: isActive ? s.color : 'var(--muted)' }}>{s.label}</span>
+              <span className="text-2xl font-bold tabular-nums" style={{ color: s.color }}>{s.value}</span>
+            </button>
+          )
+        })}
       </div>
 
       {/* 图表 */}
@@ -501,28 +564,118 @@ export default function Consulting() {
         </div>
       )}
 
-      {/* 筛选卡片 */}
-      <div className="rounded-xl p-3 flex flex-col gap-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-medium w-8 shrink-0" style={{ color: 'var(--muted)' }}>类型</span>
-          <Chip active={typeFilter === '全部'} onClick={() => setType('全部')}>全部</Chip>
-          {Q_TYPE_OPTS.map(t => (
-            <Chip key={t} active={typeFilter === t} color={Q_TYPE_CFG[t]?.color ?? '#6366F1'} onClick={() => setType(t)}>{t}</Chip>
-          ))}
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-medium w-8 shrink-0" style={{ color: 'var(--muted)' }}>状态</span>
-          {['全部', 'OPEN', 'IN PROCESS', 'PENDING', 'CLOSE'].map(s => (
-            <Chip key={s} active={stFilter === s} color={STATUS_CFG[s]?.color} onClick={() => setSt(s)}>{s}</Chip>
-          ))}
-          <div className="flex-1 min-w-48 relative ml-2">
-            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted)' }} />
-            <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="搜索问题、对接人、部门、处理人、阶段"
-              className="w-full pl-8 pr-3 py-1 rounded-lg text-xs outline-none"
-              style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)' }} />
+      {/* 筛选器面板 */}
+      <div className="rounded-xl overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        {/* 筛选器头部 */}
+        <button
+          onClick={() => setFilterOpen(o => !o)}
+          className="w-full flex items-center justify-between px-4 py-2.5 transition-colors hover:opacity-80"
+          style={{ borderBottom: filterOpen ? '1px solid var(--border)' : 'none' }}>
+          <div className="flex items-center gap-2">
+            <Filter className="w-3.5 h-3.5" style={{ color: hasFilters ? '#6366F1' : 'var(--muted)' }} strokeWidth={1.75} />
+            <span className="text-xs font-medium" style={{ color: hasFilters ? '#6366F1' : 'var(--text)' }}>
+              筛选器
+            </span>
+            {hasFilters && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold text-white"
+                style={{ background: '#6366F1' }}>
+                {Object.values(filters).filter(v => v !== '').length}
+              </span>
+            )}
+            <span className="text-xs" style={{ color: 'var(--muted)' }}>
+              共 <span className="font-semibold" style={{ color: 'var(--text)' }}>{shown.length}</span> 条
+            </span>
           </div>
-        </div>
+          <div className="flex items-center gap-2">
+            {hasFilters && (
+              <button
+                onClick={e => { e.stopPropagation(); setFilters({ ...INIT_FILTERS }) }}
+                className="press flex items-center gap-1 text-xs px-2 py-0.5 rounded-md"
+                style={{ color: '#6366F1', background: 'rgba(99,102,241,0.08)' }}>
+                <RotateCcw className="w-3 h-3" />清空
+              </button>
+            )}
+            {filterOpen
+              ? <ChevronUp className="w-4 h-4" style={{ color: 'var(--muted)' }} />
+              : <ChevronDown className="w-4 h-4" style={{ color: 'var(--muted)' }} />}
+          </div>
+        </button>
+
+        {/* 筛选器内容 */}
+        {filterOpen && (
+          <div className="p-4 grid gap-3 animate-slide-down" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+            {/* 第一行：类型 / 阶段 / 状态 / 关键词 */}
+            <div>
+              <div className="text-[11px] mb-1 font-medium" style={{ color: 'var(--muted)' }}>问题类型</div>
+              <FilterSelect
+                value={filters.qType}
+                onChange={v => setFilters(f => ({ ...f, qType: v }))}
+                options={Q_TYPE_OPTS}
+                placeholder="全部类型" />
+            </div>
+            <div>
+              <div className="text-[11px] mb-1 font-medium" style={{ color: 'var(--muted)' }}>问题阶段</div>
+              <FilterSelect
+                value={filters.qStage}
+                onChange={v => setFilters(f => ({ ...f, qStage: v }))}
+                options={Q_STAGE_OPTS}
+                placeholder="全部阶段" />
+            </div>
+            <div>
+              <div className="text-[11px] mb-1 font-medium" style={{ color: 'var(--muted)' }}>事项状态</div>
+              <FilterSelect
+                value={filters.status}
+                onChange={v => setFilters(f => ({ ...f, status: v }))}
+                options={STATUS_OPTS}
+                placeholder="全部状态" />
+            </div>
+            <div>
+              <div className="text-[11px] mb-1 font-medium" style={{ color: 'var(--muted)' }}>关键词搜索</div>
+              <FilterInput
+                value={filters.q}
+                onChange={v => setFilters(f => ({ ...f, q: v }))}
+                placeholder="问题、建议、部门…"
+                icon={Search} />
+            </div>
+
+            {/* 第二行：对接人 / 对接部门 / 处理人 / 受理日期范围 */}
+            <div>
+              <div className="text-[11px] mb-1 font-medium" style={{ color: 'var(--muted)' }}>对接人</div>
+              <FilterInput
+                value={filters.contact}
+                onChange={v => setFilters(f => ({ ...f, contact: v }))}
+                placeholder="输入对接人" />
+            </div>
+            <div>
+              <div className="text-[11px] mb-1 font-medium" style={{ color: 'var(--muted)' }}>对接部门</div>
+              <FilterInput
+                value={filters.dept}
+                onChange={v => setFilters(f => ({ ...f, dept: v }))}
+                placeholder="输入部门名称" />
+            </div>
+            <div>
+              <div className="text-[11px] mb-1 font-medium" style={{ color: 'var(--muted)' }}>处理人</div>
+              <FilterInput
+                value={filters.handler}
+                onChange={v => setFilters(f => ({ ...f, handler: v }))}
+                placeholder="输入处理人" />
+            </div>
+            <div>
+              <div className="text-[11px] mb-1 font-medium" style={{ color: 'var(--muted)' }}>受理日期范围</div>
+              <div className="flex items-center gap-1">
+                <input type="date" value={filters.acceptFrom}
+                  onChange={e => setFilters(f => ({ ...f, acceptFrom: e.target.value }))}
+                  className="flex-1 px-2 py-1.5 rounded-lg text-xs outline-none"
+                  style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)', minWidth: 0 }} />
+                <span className="text-[11px] shrink-0" style={{ color: 'var(--muted)' }}>—</span>
+                <input type="date" value={filters.acceptTo}
+                  onChange={e => setFilters(f => ({ ...f, acceptTo: e.target.value }))}
+                  className="flex-1 px-2 py-1.5 rounded-lg text-xs outline-none"
+                  style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)', minWidth: 0 }} />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 表格 */}
@@ -543,7 +696,11 @@ export default function Consulting() {
           ))}
         </div>
 
-        {loading && <div className="flex justify-center py-10"><div className="w-5 h-5 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" /></div>}
+        {loading && (
+          <div className="flex justify-center py-10">
+            <div className="w-5 h-5 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+          </div>
+        )}
         {!loading && err && <div className="text-center py-10 text-sm text-red-400">{err}</div>}
         {!loading && !err && shown.length === 0 && (
           <div className="flex flex-col items-center gap-2 py-12">
@@ -566,9 +723,9 @@ export default function Consulting() {
             <span className="text-xs tabular-nums" style={{ color: 'var(--muted)', minWidth: 0 }}>{fmtDate(row.acceptDate) || '—'}</span>
             <span className="text-xs tabular-nums" style={{ color: 'var(--muted)', minWidth: 0 }}>{fmtDate(row.solveDate) || '—'}</span>
             <div className="flex items-center justify-center gap-2" style={{ minWidth: 0 }} onClick={e => e.stopPropagation()}>
-              <button onClick={() => setView(row)} className="hover:opacity-70"><Eye className="w-3.5 h-3.5" style={{ color: 'var(--muted)' }} strokeWidth={1.75} /></button>
-              <button onClick={() => setEdit(row)} className="hover:opacity-70"><Pencil className="w-3.5 h-3.5" style={{ color: 'var(--muted)' }} strokeWidth={1.75} /></button>
-              {isAdmin && <button onClick={() => handleDelete(row)} className="hover:opacity-70"><Trash2 className="w-3.5 h-3.5" style={{ color: '#F87171' }} strokeWidth={1.75} /></button>}
+              <button onClick={() => setView(row)} className="press hover:opacity-70"><Eye className="w-3.5 h-3.5" style={{ color: 'var(--muted)' }} strokeWidth={1.75} /></button>
+              <button onClick={() => setEdit(row)} className="press hover:opacity-70"><Pencil className="w-3.5 h-3.5" style={{ color: 'var(--muted)' }} strokeWidth={1.75} /></button>
+              {isAdmin && <button onClick={() => handleDelete(row)} className="press hover:opacity-70"><Trash2 className="w-3.5 h-3.5" style={{ color: '#F87171' }} strokeWidth={1.75} /></button>}
             </div>
           </div>
         ))}

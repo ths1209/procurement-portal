@@ -94,8 +94,8 @@ export default function Dashboard() {
           </div>
           <div className="flex gap-3">
             {[
-              { n: totalTools,        l:'百宝箱',   icon:<Package className="w-4 h-4"/>  },
-              { n: dash.items.length, l:'业务看板', icon:<BarChart3 className="w-4 h-4"/> },
+              { n: totalTools,       l:'百宝箱',   icon:<Package className="w-4 h-4"/>  },
+              { n: dashItems.length, l:'业务看板', icon:<BarChart3 className="w-4 h-4"/> },
             ].map(s => (
               <div key={s.l} className="flex flex-col items-center px-5 py-3 rounded-2xl"
                 style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.08)' }}>
@@ -132,7 +132,7 @@ export default function Dashboard() {
         title="业务数据赋能" sub="一键直达各业务数据看板，支持窗口预览"
         icon={<BarChart3 className="w-4 h-4" />} iconBg="rgba(14,165,233,0.12)" iconClr="#0EA5E9"
         onAdd={() => setAddGroup('__dash__')}>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 stagger">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 stagger">
           {dashItems.map((d, idx) => (
             <DashCard key={d._id || d.id} item={{ ...d, g: d.g ?? (idx % GRADS.length) }}
               isAdmin={isAdmin}
@@ -300,31 +300,43 @@ function DashCard({ item, isAdmin, onDel, onPrev }) {
   const clr = GRADS[item.g ?? 4]
   return (
     <div className="card hover-lift group flex flex-col overflow-hidden">
-      <div className="relative h-14 flex items-center justify-center" style={{ background:`${clr}18` }}>
-        <span className="text-3xl select-none">{item.icon}</span>
+      {/* 彩色渐变顶部 */}
+      <div className="relative h-24 flex items-center justify-center shrink-0 overflow-hidden"
+        style={{ background:`linear-gradient(135deg, ${clr}28, ${clr}10)`, borderBottom:`1px solid ${clr}20` }}>
+        {/* 装饰圆圈 */}
+        <div className="absolute -right-6 -bottom-6 w-28 h-28 rounded-full" style={{ background:`${clr}12` }} />
+        <div className="absolute -left-3 -top-3 w-16 h-16 rounded-full" style={{ background:`${clr}08` }} />
+        <span className="text-4xl select-none relative z-10">{item.icon}</span>
         {isAdmin && (
           <button onClick={onDel}
-            className="press absolute top-1.5 right-1.5 w-5 h-5 rounded-full items-center justify-center bg-black/10 hover:bg-red-500/20 opacity-0 group-hover:opacity-100 hidden group-hover:flex"
+            className="press absolute top-2 right-2 w-6 h-6 rounded-lg flex items-center justify-center bg-black/10 hover:bg-red-500/20 opacity-0 group-hover:opacity-100 transition-opacity"
             style={{ color:'var(--muted)' }}>
-            <X className="w-2.5 h-2.5" />
+            <X className="w-3 h-3" />
           </button>
         )}
       </div>
-      <div className="flex flex-col flex-1 p-3 gap-2">
-        <div>
-          <p className="font-semibold text-[13px] leading-tight" style={{ color:'var(--text)' }}>{item.name}</p>
-          <p className="text-[11px] mt-0.5 line-clamp-2 leading-relaxed" style={{ color:'var(--muted)' }}>{item.desc}</p>
+
+      {/* 内容区 */}
+      <div className="flex flex-col flex-1 p-4 gap-3">
+        <div className="flex-1">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <div className="w-2 h-2 rounded-full shrink-0" style={{ background:clr }} />
+            <p className="font-semibold text-[14px] leading-tight" style={{ color:'var(--text)' }}>{item.name}</p>
+          </div>
+          {item.desc && (
+            <p className="text-[12px] line-clamp-2 leading-relaxed pl-3.5" style={{ color:'var(--muted)' }}>{item.desc}</p>
+          )}
         </div>
-        <div className="grid grid-cols-2 gap-1.5">
+        <div className="grid grid-cols-2 gap-2">
           <button onClick={onPrev}
-            className="press flex items-center justify-center gap-1 py-1.5 rounded-xl text-[11px] font-semibold text-indigo-500"
-            style={{ background:'rgba(99,102,241,0.08)', border:'1px solid rgba(99,102,241,0.12)' }}>
-            <Eye className="w-3 h-3" /> 预览
+            className="press flex items-center justify-center gap-1 py-2 rounded-xl text-[12px] font-semibold"
+            style={{ background:`${clr}12`, color:clr, border:`1px solid ${clr}25` }}>
+            <Eye className="w-3.5 h-3.5" /> 预览
           </button>
           <a href={item.url} target="_blank" rel="noopener noreferrer"
-            className="press flex items-center justify-center gap-1 py-1.5 rounded-xl text-[11px] font-semibold text-white"
-            style={{ background:'#6366F1' }}>
-            打开 <ExternalLink className="w-3 h-3" />
+            className="press flex items-center justify-center gap-1 py-2 rounded-xl text-[12px] font-semibold text-white"
+            style={{ background:clr }}>
+            打开 <ExternalLink className="w-3.5 h-3.5" />
           </a>
         </div>
       </div>
@@ -335,13 +347,13 @@ function DashCard({ item, isAdmin, onDel, onPrev }) {
 function AddCard({ label, onClick }) {
   return (
     <button onClick={onClick}
-      className="press flex flex-col items-center justify-center rounded-2xl gap-2 group min-h-[148px]"
+      className="press flex flex-col items-center justify-center rounded-2xl gap-2.5 group min-h-[172px]"
       style={{ border:'1.5px dashed rgba(99,102,241,0.22)', background:'rgba(99,102,241,0.03)' }}>
-      <div className="w-9 h-9 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform"
+      <div className="w-10 h-10 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform"
         style={{ background:'rgba(99,102,241,0.1)' }}>
-        <Plus className="w-4 h-4 text-indigo-400 group-hover:text-indigo-500" />
+        <Plus className="w-5 h-5 text-indigo-400 group-hover:text-indigo-500" />
       </div>
-      <span className="text-[11px] font-medium text-indigo-400/60 group-hover:text-indigo-500 transition-colors">{label}</span>
+      <span className="text-[12px] font-medium text-indigo-400/60 group-hover:text-indigo-500 transition-colors">{label}</span>
     </button>
   )
 }

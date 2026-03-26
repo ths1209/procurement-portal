@@ -494,7 +494,7 @@ function HandlerChart({ rows, handlerColors }) {
         const avg = (count / monthsActive).toFixed(1)
         return { handler, count, avg: parseFloat(avg), monthsActive }
       })
-      .sort((a, b) => b.count - a.count)
+      .sort((a, b) => b.avg - a.avg)
   }, [rows])
 
   if (!data.length) return null

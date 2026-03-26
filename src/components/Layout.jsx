@@ -33,12 +33,7 @@ export default function Layout({ children }) {
       {/* Logo */}
       <div className="px-5 pt-6 pb-4 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-            style={{ background: 'linear-gradient(135deg,#6366F1,#0EA5E9)' }}>
-            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-            </svg>
-          </div>
+          <img src="/med2f4hih.png" alt="TAL 好未来" className="h-8 w-auto object-contain" />
           <div>
             <p className="text-[13px] font-semibold leading-none" style={{ color: 'var(--sb-text-strong)' }}>采购运营组</p>
             <p className="text-[10px] mt-0.5 tracking-widest" style={{ color: 'var(--sb-muted)' }}>PORTAL</p>

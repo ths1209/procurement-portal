@@ -34,10 +34,7 @@ export default function Layout({ children }) {
       {/* Logo */}
       <div className="px-5 pt-6 pb-4 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="shrink-0 rounded-xl overflow-hidden"
-            style={{ width: 32, height: 32, boxShadow: '0 1px 4px rgba(0,0,0,0.1)' }}>
-            <img src={talLogo} alt="TAL 好未来" className="w-full h-full object-cover" />
-          </div>
+          <img src={talLogo} alt="TAL 好未来" className="h-8 w-auto object-contain" />
           <div>
             <p className="text-[13px] font-semibold leading-none" style={{ color: 'var(--sb-text-strong)' }}>采购运营组</p>
             <p className="text-[10px] mt-0.5 tracking-widest" style={{ color: 'var(--sb-muted)' }}>PORTAL</p>

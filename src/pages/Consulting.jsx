@@ -179,6 +179,76 @@ function FSel({ value, onChange, options, placeholder }) {
     </select>
   )
 }
+/* 可新增选项的下拉组件 */
+function FCreatableSel({ value, onChange, options, setOptions, placeholder }) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const ref = useState(() => ({ current: null }))[0]
+
+  useEffect(() => {
+    if (!open) return
+    function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [open])
+
+  const filtered = options.filter(o => !query || o.includes(query))
+  const canCreate = query.trim() && !options.some(o => o === query.trim())
+
+  function select(v) { onChange(v); setQuery(''); setOpen(false) }
+  function create() {
+    const v = query.trim()
+    if (!v) return
+    setOptions(prev => [...prev, v])
+    select(v)
+  }
+
+  return (
+    <div className="relative" ref={el => { ref.current = el }}>
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="w-full px-3 py-1.5 rounded-lg text-sm text-left flex items-center justify-between"
+        style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: value ? 'var(--text)' : 'var(--muted)' }}>
+        <span className="truncate">{value || placeholder || '请选择'}</span>
+        <ChevronDown className="w-3.5 h-3.5 shrink-0 ml-1" style={{ color: 'var(--muted)' }} />
+      </button>
+      {open && (
+        <div className="absolute z-[60] w-full mt-1 rounded-xl shadow-xl overflow-hidden"
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <div className="p-1.5 border-b" style={{ borderColor: 'var(--border)' }}>
+            <input autoFocus value={query} onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); canCreate ? create() : filtered[0] && select(filtered[0]) } }}
+              placeholder="搜索或输入新选项…"
+              className="w-full px-2.5 py-1.5 rounded-lg text-sm outline-none"
+              style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)' }} />
+          </div>
+          <div className="max-h-48 overflow-y-auto py-1">
+            {filtered.map(o => (
+              <div key={o} onClick={() => select(o)}
+                className="px-3 py-2 text-sm cursor-pointer transition-colors"
+                style={{ color: o === value ? '#6366F1' : 'var(--text)', background: o === value ? 'rgba(99,102,241,0.08)' : 'transparent' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface2)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = o === value ? 'rgba(99,102,241,0.08)' : 'transparent' }}>
+                {o}
+              </div>
+            ))}
+            {canCreate && (
+              <div onClick={create}
+                className="px-3 py-2 text-sm cursor-pointer flex items-center gap-1.5 font-medium"
+                style={{ color: '#6366F1' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.06)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+                <Plus className="w-3.5 h-3.5" /> 添加「{query.trim()}」
+              </div>
+            )}
+            {filtered.length === 0 && !canCreate && (
+              <div className="px-3 py-3 text-xs text-center" style={{ color: 'var(--muted)' }}>无匹配选项</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 function FTextarea({ value, onChange, rows = 4 }) {
   return (
     <textarea value={value ?? ''} onChange={e => onChange(e.target.value)} rows={rows}
@@ -492,6 +562,8 @@ function EditModal({ row, onClose, onSave }) {
   } : { ...EMPTY_FORM })
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
+  const [typeOpts,  setTypeOpts]  = useState(Q_TYPE_OPTS)
+  const [stageOpts, setStageOpts] = useState(Q_STAGE_OPTS)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   async function submit() {
     if (!form[C.question]) { setErr('咨询问题不能为空'); return }
@@ -513,8 +585,8 @@ function EditModal({ row, onClose, onSave }) {
           <LRow label="咨询和受理问题 *"><FTextarea value={form[C.question]} onChange={v => set(C.question, v)} rows={3} /></LRow>
           <LRow label="咨询建议和反馈"><FTextarea value={form[C.answer]} onChange={v => set(C.answer, v)} rows={3} /></LRow>
           <div className="grid grid-cols-2 gap-3">
-            <LRow label="问题类型"><FSel value={form[C.qType]} onChange={v => set(C.qType, v)} options={Q_TYPE_OPTS} placeholder="请选择" /></LRow>
-            <LRow label="问题阶段"><FSel value={form[C.qStage]} onChange={v => set(C.qStage, v)} options={Q_STAGE_OPTS} placeholder="请选择" /></LRow>
+            <LRow label="问题类型"><FCreatableSel value={form[C.qType]} onChange={v => set(C.qType, v)} options={typeOpts} setOptions={setTypeOpts} placeholder="请选择或输入新增" /></LRow>
+            <LRow label="问题阶段"><FCreatableSel value={form[C.qStage]} onChange={v => set(C.qStage, v)} options={stageOpts} setOptions={setStageOpts} placeholder="请选择或输入新增" /></LRow>
             <LRow label="对接人"><FInput value={form[C.contact]} onChange={v => set(C.contact, v)} /></LRow>
             <LRow label="对接部门"><FInput value={form[C.dept]} onChange={v => set(C.dept, v)} /></LRow>
             <LRow label="处理人"><FInput value={form[C.handler]} onChange={v => set(C.handler, v)} /></LRow>

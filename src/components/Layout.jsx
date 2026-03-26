@@ -35,9 +35,8 @@ export default function Layout({ children }) {
       <div className="px-5 pt-6 pb-4 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="shrink-0 rounded-xl overflow-hidden"
-            style={{ filter: 'drop-shadow(0 2px 10px rgba(99,102,241,0.45)) drop-shadow(0 1px 3px rgba(0,0,0,0.25))' }}>
-            <img src={talLogo} alt="TAL 好未来" className="h-8 w-auto object-contain block"
-              style={{ mixBlendMode: 'screen' }} />
+            style={{ width: 32, height: 32, boxShadow: '0 1px 4px rgba(0,0,0,0.1)' }}>
+            <img src={talLogo} alt="TAL 好未来" className="w-full h-full object-cover" />
           </div>
           <div>
             <p className="text-[13px] font-semibold leading-none" style={{ color: 'var(--sb-text-strong)' }}>采购运营组</p>

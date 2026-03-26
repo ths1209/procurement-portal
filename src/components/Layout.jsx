@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import talLogo from '../assets/tal-logo.png'
 import { createPortal } from 'react-dom'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { LayoutDashboard, ClipboardList, Medal, BookOpen, Users, LogOut, Menu, X, Sun, Moon, KeyRound } from 'lucide-react'
@@ -33,7 +34,7 @@ export default function Layout({ children }) {
       {/* Logo */}
       <div className="px-5 pt-6 pb-4 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <img src="/med2f4hih.png" alt="TAL 好未来" className="h-8 w-auto object-contain" />
+          <img src={talLogo} alt="TAL 好未来" className="h-8 w-auto object-contain" />
           <div>
             <p className="text-[13px] font-semibold leading-none" style={{ color: 'var(--sb-text-strong)' }}>采购运营组</p>
             <p className="text-[10px] mt-0.5 tracking-widest" style={{ color: 'var(--sb-muted)' }}>PORTAL</p>

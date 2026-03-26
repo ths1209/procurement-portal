@@ -39,6 +39,7 @@ const EMPTY_FORM = {
   [C.question]: '', [C.answer]: '', [C.qType]: '', [C.qStage]: '',
   [C.contact]: '', [C.dept]: '', [C.handler]: '',
   [C.acceptDate]: '', [C.solveDate]: '', [C.status]: 'OPEN', [C.month]: '',
+  [C.tags]: '',
 }
 
 const STATUS_CFG = {
@@ -183,6 +184,43 @@ function FTextarea({ value, onChange, rows = 4 }) {
     <textarea value={value ?? ''} onChange={e => onChange(e.target.value)} rows={rows}
       className="w-full px-3 py-1.5 rounded-lg text-sm outline-none resize-none"
       style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)' }} />
+  )
+}
+/* 标签输入组件：回车/逗号添加，× 删除 */
+function TagInput({ value, onChange }) {
+  const tags = value ? value.split(',').map(t => t.trim()).filter(Boolean) : []
+  const [input, setInput] = useState('')
+  function addTag(raw) {
+    const t = raw.trim()
+    if (!t || tags.includes(t)) { setInput(''); return }
+    onChange([...tags, t].join(','))
+    setInput('')
+  }
+  function onKey(e) {
+    if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(input) }
+    if (e.key === 'Backspace' && !input && tags.length) {
+      onChange(tags.slice(0, -1).join(','))
+    }
+  }
+  function removeTag(i) { onChange(tags.filter((_, idx) => idx !== i).join(',')) }
+  return (
+    <div className="flex flex-wrap gap-1.5 items-center min-h-[34px] px-2.5 py-1.5 rounded-lg"
+      style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+      {tags.map((t, i) => (
+        <span key={i} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium"
+          style={{ background: 'rgba(99,102,241,0.12)', color: '#6366F1', border: '1px solid rgba(99,102,241,0.2)' }}>
+          {t}
+          <button type="button" onClick={() => removeTag(i)}
+            className="hover:opacity-60 transition-opacity leading-none">
+            <X className="w-2.5 h-2.5" />
+          </button>
+        </span>
+      ))}
+      <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={onKey} onBlur={() => addTag(input)}
+        placeholder={tags.length ? '' : '输入后按回车添加标签'}
+        className="flex-1 min-w-[100px] text-sm outline-none bg-transparent"
+        style={{ color: 'var(--text)' }} />
+    </div>
   )
 }
 function TypeBadge({ type }) {
@@ -450,7 +488,7 @@ function EditModal({ row, onClose, onSave }) {
     [C.qType]: row.qType, [C.qStage]: row.qStage,
     [C.contact]: row.contact, [C.dept]: row.dept, [C.handler]: row.handler,
     [C.acceptDate]: fmtDate(row.acceptDate), [C.solveDate]: fmtDate(row.solveDate),
-    [C.status]: row.status, [C.month]: row.month,
+    [C.status]: row.status, [C.month]: row.month, [C.tags]: row.tags ?? '',
   } : { ...EMPTY_FORM })
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
@@ -485,6 +523,7 @@ function EditModal({ row, onClose, onSave }) {
             <LRow label="解决日期"><FInput value={form[C.solveDate]} onChange={v => set(C.solveDate, v)} type="date" /></LRow>
             <LRow label="受理月份"><FInput value={form[C.month]} onChange={v => set(C.month, v)} placeholder="如：2025-03" /></LRow>
           </div>
+          <LRow label="标签"><TagInput value={form[C.tags]} onChange={v => set(C.tags, v)} /></LRow>
           {err && <p className="text-xs text-red-400">{err}</p>}
         </div>
         <div className="px-5 py-3 flex justify-end gap-2" style={{ borderTop: '1px solid var(--border)' }}>
@@ -530,6 +569,19 @@ function DetailModal({ row, onClose, onEdit, onDelete, isAdmin }) {
               <div className="text-sm leading-relaxed p-3 rounded-xl whitespace-pre-wrap"
                 style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }}>
                 {row.answer}
+              </div>
+            </div>
+          )}
+          {row.tags && (
+            <div>
+              <div className="text-xs mb-1.5 font-medium" style={{ color: 'var(--muted)' }}>标签</div>
+              <div className="flex flex-wrap gap-1.5">
+                {row.tags.split(',').map(t => t.trim()).filter(Boolean).map((t, i) => (
+                  <span key={i} className="px-2 py-0.5 rounded-full text-[11px] font-medium"
+                    style={{ background: 'rgba(99,102,241,0.12)', color: '#6366F1', border: '1px solid rgba(99,102,241,0.2)' }}>
+                    {t}
+                  </span>
+                ))}
               </div>
             </div>
           )}

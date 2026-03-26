@@ -15,6 +15,7 @@ export const C = {
   solveDate:  '解决日期',
   status:     '事项状态',
   month:      '受理月份',
+  tags:       '标签',
 }
 
 export const Q_TYPE_OPTS = [
@@ -23,6 +24,7 @@ export const Q_TYPE_OPTS = [
   '授权管理咨询', '自采管理咨询', '知客垂询支持', '电商运营支持',
   '采购系统咨询', '合同管理支持', '费控管理支持',
   '高职流程审批咨询', '目录商品上架咨询', '询证函支持', '需求管理咨询',
+  '数据咨询',
 ]
 
 export const Q_STAGE_OPTS = [
@@ -31,7 +33,7 @@ export const Q_STAGE_OPTS = [
   '供应商系统注册环节', '供应商系统认证环节', '供应商系统退出环节',
   '供应商立项审批环节', '供应商评估环节', '供应商对账环节',
   '授权前咨询环节', '授权提交环节', '授权后指引环节',
-  '自采要求答疑', '知客垂询日常答疑',
+  '自采要求答疑', '知客垂询日常答疑', '数据日常对接答疑',
   '京东平台使用', '得力平台使用',
   '采购系统权限管理', '采购系统操作指引',
   '合同启用流程', '合同履约咨询', '预付款项咨询',
@@ -63,6 +65,7 @@ export const Q_TYPE_CFG = {
   '目录商品上架咨询': { color: '#10B981', bg: 'rgba(16,185,129,0.1)'  },
   '询证函支持':       { color: '#F59E0B', bg: 'rgba(245,158,11,0.1)'  },
   '需求管理咨询':     { color: '#6366F1', bg: 'rgba(99,102,241,0.1)'  },
+  '数据咨询':         { color: '#06B6D4', bg: 'rgba(6,182,212,0.1)'   },
 }
 
 async function req(path, init = {}) {
@@ -98,6 +101,7 @@ function norm(r) {
     solveDate:  f[C.solveDate]  ?? '',
     status:     f[C.status]     ?? 'OPEN',
     month:      f[C.month]      ?? '',
+    tags:       f[C.tags]       ?? '',
   }
 }
 

@@ -61,7 +61,10 @@ export default function Login() {
           <div className="absolute -bottom-16 -left-16 w-48 h-48 rounded-full"
             style={{ background: 'radial-gradient(circle, rgba(14,165,233,0.15) 0%, transparent 70%)' }} />
           <div className="relative flex items-center gap-2.5">
-            <img src={talLogo} alt="TAL 好未来" className="h-9 w-auto object-contain" />
+            <div className="rounded-2xl p-2 shrink-0"
+              style={{ background: 'rgba(255,255,255,0.95)', boxShadow: '0 8px 24px rgba(0,0,0,0.25), 0 2px 8px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,1)' }}>
+              <img src={talLogo} alt="TAL 好未来" className="h-7 w-auto object-contain block" />
+            </div>
             <span className="text-white text-sm font-semibold">采购运营组</span>
           </div>
           <div className="relative space-y-5">

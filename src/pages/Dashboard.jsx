@@ -131,7 +131,7 @@ export default function Dashboard() {
         title="业务数据赋能" sub="一键直达各业务数据看板，支持窗口预览"
         icon={<BarChart3 className="w-4 h-4" />} iconBg="rgba(14,165,233,0.12)" iconClr="#0EA5E9"
         onAdd={() => setAddGroup('__dash__')}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 stagger">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 stagger">
           {dashItems.map((d, idx) => (
             <DashCard key={d._id || d.id} item={{ ...d, g: d.g ?? (idx % GRADS.length) }}
               isAdmin={isAdmin}
@@ -146,12 +146,12 @@ export default function Dashboard() {
       {addGroup && addGroup !== '__dash__' && (
         <AddToolModal group={addGroup} onClose={() => setAddGroup(null)}
           onSaveUrl={async x => {
-            if (configured) { await createUrlTool(x, profile?.email); await loadTools() }
+            if (configured) { await createUrlTool(x, profile?.displayName || profile?.email); await loadTools() }
             else { ai.add(x) }
             setAddGroup(null)
           }}
           onSaveFile={async meta => {
-            await createFileTool(meta, profile?.email)
+            await createFileTool(meta, profile?.displayName || profile?.email)
             await loadTools()
             setAddGroup(null)
           }}
@@ -162,7 +162,7 @@ export default function Dashboard() {
       {addGroup === '__dash__' && (
         <AddDashModal onClose={() => setAddGroup(null)}
           onSave={async x => {
-            if (configured) { await createDashItem(x, profile?.email); await loadTools() }
+            if (configured) { await createDashItem(x, profile?.displayName || profile?.email); await loadTools() }
             else { dash.add({ ...x, g: dash.items.length % GRADS.length }) }
             setAddGroup(null)
           }} />
@@ -209,30 +209,29 @@ function GroupPanel({ group, urlTools, fileTools, isAdmin, onAdd, onDelUrl, onDe
   return (
     <div className="overflow-hidden rounded-2xl"
       style={{
-        background: `linear-gradient(160deg, ${cfg.color}07 0%, var(--surface) 50%)`,
-        border: `1px solid ${cfg.color}22`,
-        boxShadow: `inset 0 1px 0 rgba(255,255,255,0.05), 0 1px 3px rgba(0,0,0,0.06)`,
+        background: `linear-gradient(160deg, ${cfg.color}04 0%, var(--surface) 45%)`,
+        border: `1px solid ${cfg.color}16`,
       }}>
       {/* 分组头 */}
       <div className="flex items-center justify-between px-3.5 py-2.5"
         style={{
-          borderBottom: `1px solid ${cfg.color}18`,
-          background: `linear-gradient(135deg, ${cfg.color}12, ${cfg.color}06)`,
+          borderBottom: `1px solid ${cfg.color}10`,
+          background: `linear-gradient(135deg, ${cfg.color}09, ${cfg.color}04)`,
         }}>
         <div className="flex items-center gap-2">
           <div className="w-6 h-6 rounded-lg flex items-center justify-center text-sm select-none shrink-0"
-            style={{ background:`${cfg.color}18`, boxShadow:`inset 0 1px 0 rgba(255,255,255,0.1)` }}>
+            style={{ background:`${cfg.color}14` }}>
             {cfg.emoji}
           </div>
           <span className="font-semibold text-[13px]" style={{ color:cfg.color }}>{group}</span>
           <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold tabular-nums"
-            style={{ background:`${cfg.color}18`, color:cfg.color }}>
+            style={{ background:`${cfg.color}12`, color:cfg.color }}>
             {total}
           </span>
         </div>
         <button onClick={onAdd}
           className="press flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold"
-          style={{ background:`${cfg.color}10`, color:cfg.color, border:`1px solid ${cfg.color}20` }}>
+          style={{ background:`${cfg.color}0c`, color:cfg.color, border:`1px solid ${cfg.color}18` }}>
           <Plus className="w-3 h-3" /> 添加
         </button>
       </div>
@@ -284,8 +283,14 @@ function ToolRow({ icon, name, desc, isAdmin, onDel, action, badge, uploadedBy, 
   return (
     <div className="flex items-center gap-3 px-3.5 py-2.5 group transition-colors"
       style={{ borderBottom:'1px solid var(--border)' }}
-      onMouseEnter={e => { e.currentTarget.style.background = accentColor ? `${accentColor}05` : 'var(--surface2)' }}
-      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+      onMouseEnter={e => {
+        e.currentTarget.style.background = accentColor ? `${accentColor}06` : 'var(--surface2)'
+        e.currentTarget.style.boxShadow = accentColor ? `inset 2px 0 0 ${accentColor}70` : 'none'
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.background = 'transparent'
+        e.currentTarget.style.boxShadow = 'none'
+      }}>
       <span className="text-xl shrink-0 select-none w-7 text-center">{icon}</span>
       <div className="flex-1 min-w-0">
         <p className="text-[13px] font-medium truncate" style={{ color:'var(--text)' }}>{name}</p>
@@ -314,48 +319,52 @@ function ToolRow({ icon, name, desc, isAdmin, onDel, action, badge, uploadedBy, 
   )
 }
 
-// ─── DashCard ─────────────────────────────────────────────────────────────────
+// ─── DashCard（方形紧凑）─────────────────────────────────────────────────────
 function DashCard({ item, isAdmin, onDel, onPrev }) {
   const clr = GRADS[item.g ?? 4]
   return (
-    <div className="card hover-lift group flex flex-col overflow-hidden">
-      {/* 彩色渐变顶部 */}
-      <div className="relative h-24 flex items-center justify-center shrink-0 overflow-hidden"
-        style={{ background:`linear-gradient(135deg, ${clr}28, ${clr}10)`, borderBottom:`1px solid ${clr}20` }}>
-        {/* 装饰圆圈 */}
-        <div className="absolute -right-6 -bottom-6 w-28 h-28 rounded-full" style={{ background:`${clr}12` }} />
-        <div className="absolute -left-3 -top-3 w-16 h-16 rounded-full" style={{ background:`${clr}08` }} />
-        <span className="text-4xl select-none relative z-10">{item.icon}</span>
+    <div className="group flex flex-col overflow-hidden rounded-2xl transition-all duration-200 hover:-translate-y-0.5"
+      style={{
+        background: 'var(--surface)',
+        border: `1px solid ${clr}20`,
+        boxShadow: `0 1px 3px rgba(0,0,0,0.06)`,
+      }}
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 6px 20px ${clr}28, 0 1px 3px rgba(0,0,0,0.06)` }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 1px 3px rgba(0,0,0,0.06)` }}>
+
+      {/* 图标区 */}
+      <div className="relative flex items-center justify-center py-5 shrink-0"
+        style={{ background:`linear-gradient(135deg, ${clr}10, ${clr}05)`, borderBottom:`1px solid ${clr}14` }}>
+        <span className="text-3xl select-none">{item.icon}</span>
         {isAdmin && (
           <button onClick={onDel}
-            className="press absolute top-2 right-2 w-6 h-6 rounded-lg flex items-center justify-center bg-black/10 hover:bg-red-500/20 opacity-0 group-hover:opacity-100 transition-opacity"
-            style={{ color:'var(--muted)' }}>
-            <X className="w-3 h-3" />
+            className="press absolute top-1.5 right-1.5 w-5 h-5 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+            style={{ background:'rgba(0,0,0,0.06)', color:'var(--muted)' }}
+            onMouseEnter={e => { e.currentTarget.style.background='rgba(244,63,94,0.12)'; e.currentTarget.style.color='#F43F5E' }}
+            onMouseLeave={e => { e.currentTarget.style.background='rgba(0,0,0,0.06)'; e.currentTarget.style.color='var(--muted)' }}>
+            <X className="w-2.5 h-2.5" />
           </button>
         )}
       </div>
 
       {/* 内容区 */}
-      <div className="flex flex-col flex-1 p-4 gap-3">
+      <div className="flex flex-col flex-1 p-3 gap-2.5">
         <div className="flex-1">
-          <div className="flex items-center gap-1.5 mb-1.5">
-            <div className="w-2 h-2 rounded-full shrink-0" style={{ background:clr }} />
-            <p className="font-semibold text-[14px] leading-tight" style={{ color:'var(--text)' }}>{item.name}</p>
-          </div>
+          <p className="font-semibold text-[12px] leading-snug" style={{ color:'var(--text)' }}>{item.name}</p>
           {item.desc && (
-            <p className="text-[12px] line-clamp-2 leading-relaxed pl-3.5" style={{ color:'var(--muted)' }}>{item.desc}</p>
+            <p className="text-[11px] mt-0.5 line-clamp-2 leading-relaxed" style={{ color:'var(--muted)' }}>{item.desc}</p>
           )}
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-1.5">
           <button onClick={onPrev}
-            className="press flex items-center justify-center gap-1 py-2 rounded-xl text-[12px] font-semibold"
-            style={{ background:`${clr}12`, color:clr, border:`1px solid ${clr}25` }}>
-            <Eye className="w-3.5 h-3.5" /> 预览
+            className="press flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-semibold"
+            style={{ background:`${clr}10`, color:clr, border:`1px solid ${clr}20` }}>
+            <Eye className="w-3 h-3" /> 预览
           </button>
           <a href={item.url} target="_blank" rel="noopener noreferrer"
-            className="press flex items-center justify-center gap-1 py-2 rounded-xl text-[12px] font-semibold text-white"
+            className="press flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-semibold text-white"
             style={{ background:clr }}>
-            打开 <ExternalLink className="w-3.5 h-3.5" />
+            打开 <ExternalLink className="w-3 h-3" />
           </a>
         </div>
       </div>
@@ -366,7 +375,7 @@ function DashCard({ item, isAdmin, onDel, onPrev }) {
 function AddCard({ label, onClick }) {
   return (
     <button onClick={onClick}
-      className="press flex flex-col items-center justify-center rounded-2xl gap-2.5 group min-h-[172px]"
+      className="press flex flex-col items-center justify-center rounded-2xl gap-2 group min-h-[140px]"
       style={{ border:'1.5px dashed rgba(99,102,241,0.22)', background:'rgba(99,102,241,0.03)' }}>
       <div className="w-10 h-10 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform"
         style={{ background:'rgba(99,102,241,0.1)' }}>

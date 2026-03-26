@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import talLogo from '../assets/tal-logo.png'
 import { useNavigate } from 'react-router-dom'
 import { Eye, EyeOff, ArrowRight, Check, Moon, Sun } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -60,12 +61,7 @@ export default function Login() {
           <div className="absolute -bottom-16 -left-16 w-48 h-48 rounded-full"
             style={{ background: 'radial-gradient(circle, rgba(14,165,233,0.15) 0%, transparent 70%)' }} />
           <div className="relative flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg,#6366F1,#0EA5E9)' }}>
-              <svg className="w-4.5 h-4.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-              </svg>
-            </div>
+            <img src={talLogo} alt="TAL 好未来" className="h-9 w-auto object-contain" />
             <span className="text-white text-sm font-semibold">采购运营组</span>
           </div>
           <div className="relative space-y-5">

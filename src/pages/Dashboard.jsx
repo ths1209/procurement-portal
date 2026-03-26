@@ -117,6 +117,7 @@ export default function Dashboard() {
               urlTools={urlTools.filter(t => (t.group ?? '采购部通用') === group)}
               fileTools={fileTools.filter(t => t.group === group)}
               isAdmin={isAdmin}
+              nameMap={{ [profile?.email]: profile?.displayName }}
               onAdd={() => setAddGroup(group)}
               onDelUrl={id => configured ? handleDelTool(id) : ai.del(id)}
               onDelFile={handleDelTool}
@@ -202,16 +203,20 @@ function Section({ title, sub, icon, iconBg, iconClr, onAdd, children }) {
 }
 
 // ─── 分组面板 ─────────────────────────────────────────────────────────────────
-function GroupPanel({ group, urlTools, fileTools, isAdmin, onAdd, onDelUrl, onDelFile, onDownload }) {
+function GroupPanel({ group, urlTools, fileTools, isAdmin, onAdd, onDelUrl, onDelFile, onDownload, nameMap = {} }) {
   const cfg = GROUP_CFG[group] ?? { emoji:'📁', color:'#64748B', bg:'rgba(100,116,139,0.07)' }
   const total = urlTools.length + fileTools.length
+  const resolveName = v => (v && nameMap[v]) ? nameMap[v] : v
 
   return (
-    <div className="overflow-hidden rounded-2xl"
+    <div className="overflow-hidden rounded-2xl transition-shadow duration-200"
       style={{
         background: `linear-gradient(160deg, ${cfg.color}04 0%, var(--surface) 45%)`,
-        border: `1px solid ${cfg.color}16`,
-      }}>
+        border: `1px solid ${cfg.color}1a`,
+        boxShadow: `0 2px 8px rgba(0,0,0,0.07), 0 0 0 0 ${cfg.color}00`,
+      }}
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 6px 20px rgba(0,0,0,0.1), 0 0 0 1px ${cfg.color}20` }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 2px 8px rgba(0,0,0,0.07), 0 0 0 0 ${cfg.color}00` }}>
       {/* 分组头 */}
       <div className="flex items-center justify-between px-3.5 py-2.5"
         style={{
@@ -240,7 +245,7 @@ function GroupPanel({ group, urlTools, fileTools, isAdmin, onAdd, onDelUrl, onDe
       <div>
         {urlTools.map(t => (
           <ToolRow key={t._id || t.id} icon={t.icon} name={t.name} desc={t.desc}
-            uploadedBy={t.uploadedBy}
+            uploadedBy={resolveName(t.uploadedBy)}
             isAdmin={isAdmin} onDel={() => onDelUrl(t._id || t.id)}
             accentColor={cfg.color}
             action={
@@ -255,7 +260,7 @@ function GroupPanel({ group, urlTools, fileTools, isAdmin, onAdd, onDelUrl, onDe
         {fileTools.map(t => (
           <ToolRow key={t._id} icon={t.icon} name={t.name}
             desc={t.desc || t.fileName}
-            uploadedBy={t.uploadedBy}
+            uploadedBy={resolveName(t.uploadedBy)}
             isAdmin={isAdmin} onDel={() => onDelFile(t._id)}
             badge={t.downloads > 0 ? `↓ ${t.downloads}` : null}
             accentColor={cfg.color}

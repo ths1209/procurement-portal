@@ -131,7 +131,7 @@ export default function Dashboard() {
         title="业务数据赋能" sub="一键直达各业务数据看板，支持窗口预览"
         icon={<BarChart3 className="w-4 h-4" />} iconBg="rgba(14,165,233,0.12)" iconClr="#0EA5E9"
         onAdd={() => setAddGroup('__dash__')}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 stagger">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 stagger">
           {dashItems.map((d, idx) => (
             <DashCard key={d._id || d.id} item={{ ...d, g: d.g ?? (idx % GRADS.length) }}
               isAdmin={isAdmin}
@@ -293,48 +293,55 @@ function ToolRow({ icon, name, desc, isAdmin, onDel, action, badge }) {
   )
 }
 
-// ─── DashCard ─────────────────────────────────────────────────────────────────
+// ─── DashCard（紧凑横向，带质感）─────────────────────────────────────────────
 function DashCard({ item, isAdmin, onDel, onPrev }) {
   const clr = GRADS[item.g ?? 4]
   return (
-    <div className="card hover-lift group flex flex-col overflow-hidden">
-      {/* 彩色渐变顶部 */}
-      <div className="relative h-24 flex items-center justify-center shrink-0 overflow-hidden"
-        style={{ background:`linear-gradient(135deg, ${clr}28, ${clr}10)`, borderBottom:`1px solid ${clr}20` }}>
-        {/* 装饰圆圈 */}
-        <div className="absolute -right-6 -bottom-6 w-28 h-28 rounded-full" style={{ background:`${clr}12` }} />
-        <div className="absolute -left-3 -top-3 w-16 h-16 rounded-full" style={{ background:`${clr}08` }} />
-        <span className="text-4xl select-none relative z-10">{item.icon}</span>
-        {isAdmin && (
-          <button onClick={onDel}
-            className="press absolute top-2 right-2 w-6 h-6 rounded-lg flex items-center justify-center bg-black/10 hover:bg-red-500/20 opacity-0 group-hover:opacity-100 transition-opacity"
-            style={{ color:'var(--muted)' }}>
-            <X className="w-3 h-3" />
-          </button>
-        )}
-      </div>
+    <div className="group relative overflow-hidden rounded-xl transition-all duration-200 hover:-translate-y-px"
+      style={{
+        background: `linear-gradient(135deg, ${clr}0d 0%, var(--surface) 55%)`,
+        border: `1px solid ${clr}28`,
+        boxShadow: `inset 0 1px 0 rgba(255,255,255,0.055), 0 1px 4px rgba(0,0,0,0.07)`,
+      }}>
+      {/* 左侧色条 */}
+      <div className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full"
+        style={{ background: `linear-gradient(180deg, ${clr}, ${clr}50)` }} />
 
-      {/* 内容区 */}
-      <div className="flex flex-col flex-1 p-4 gap-3">
-        <div className="flex-1">
-          <div className="flex items-center gap-1.5 mb-1.5">
-            <div className="w-2 h-2 rounded-full shrink-0" style={{ background:clr }} />
-            <p className="font-semibold text-[14px] leading-tight" style={{ color:'var(--text)' }}>{item.name}</p>
-          </div>
+      <div className="flex items-center gap-3 px-4 py-3 pl-5">
+        {/* 图标 */}
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-lg select-none"
+          style={{ background:`${clr}18`, boxShadow:`inset 0 1px 0 rgba(255,255,255,0.1), 0 1px 2px rgba(0,0,0,0.06)` }}>
+          {item.icon}
+        </div>
+
+        {/* 文字 */}
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-[13px] leading-tight truncate" style={{ color:'var(--text)' }}>{item.name}</p>
           {item.desc && (
-            <p className="text-[12px] line-clamp-2 leading-relaxed pl-3.5" style={{ color:'var(--muted)' }}>{item.desc}</p>
+            <p className="text-[11px] truncate mt-0.5" style={{ color:'var(--muted)' }}>{item.desc}</p>
           )}
         </div>
-        <div className="grid grid-cols-2 gap-2">
+
+        {/* 操作 */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {isAdmin && (
+            <button onClick={onDel}
+              className="press w-6 h-6 flex items-center justify-center rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{ color:'var(--muted)' }}
+              onMouseEnter={e => { e.currentTarget.style.color='#F43F5E'; e.currentTarget.style.background='rgba(244,63,94,0.08)' }}
+              onMouseLeave={e => { e.currentTarget.style.color='var(--muted)'; e.currentTarget.style.background='transparent' }}>
+              <X className="w-3 h-3" />
+            </button>
+          )}
           <button onClick={onPrev}
-            className="press flex items-center justify-center gap-1 py-2 rounded-xl text-[12px] font-semibold"
-            style={{ background:`${clr}12`, color:clr, border:`1px solid ${clr}25` }}>
-            <Eye className="w-3.5 h-3.5" /> 预览
+            className="press flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold"
+            style={{ background:`${clr}12`, color:clr, border:`1px solid ${clr}22` }}>
+            <Eye className="w-3 h-3" /> 预览
           </button>
           <a href={item.url} target="_blank" rel="noopener noreferrer"
-            className="press flex items-center justify-center gap-1 py-2 rounded-xl text-[12px] font-semibold text-white"
-            style={{ background:clr }}>
-            打开 <ExternalLink className="w-3.5 h-3.5" />
+            className="press flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-white"
+            style={{ background:clr, boxShadow:`0 1px 4px ${clr}55` }}>
+            打开 <ExternalLink className="w-3 h-3" />
           </a>
         </div>
       </div>
@@ -345,13 +352,13 @@ function DashCard({ item, isAdmin, onDel, onPrev }) {
 function AddCard({ label, onClick }) {
   return (
     <button onClick={onClick}
-      className="press flex flex-col items-center justify-center rounded-2xl gap-2.5 group min-h-[172px]"
-      style={{ border:'1.5px dashed rgba(99,102,241,0.22)', background:'rgba(99,102,241,0.03)' }}>
-      <div className="w-10 h-10 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform"
+      className="press flex items-center justify-center gap-2 rounded-xl py-3 group"
+      style={{ border:'1.5px dashed rgba(99,102,241,0.2)', background:'rgba(99,102,241,0.02)' }}>
+      <div className="w-7 h-7 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform"
         style={{ background:'rgba(99,102,241,0.1)' }}>
-        <Plus className="w-5 h-5 text-indigo-400 group-hover:text-indigo-500" />
+        <Plus className="w-3.5 h-3.5 text-indigo-400" />
       </div>
-      <span className="text-[12px] font-medium text-indigo-400/60 group-hover:text-indigo-500 transition-colors">{label}</span>
+      <span className="text-[11px] font-medium text-indigo-400/50 group-hover:text-indigo-500 transition-colors">{label}</span>
     </button>
   )
 }

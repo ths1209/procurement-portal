@@ -39,7 +39,6 @@ const EMPTY_FORM = {
   [C.question]: '', [C.answer]: '', [C.qType]: '', [C.qStage]: '',
   [C.contact]: '', [C.dept]: '', [C.handler]: '',
   [C.acceptDate]: '', [C.solveDate]: '', [C.status]: 'OPEN', [C.month]: '',
-  [C.tags]: '',
 }
 
 const STATUS_CFG = {
@@ -558,15 +557,34 @@ function EditModal({ row, onClose, onSave }) {
     [C.qType]: row.qType, [C.qStage]: row.qStage,
     [C.contact]: row.contact, [C.dept]: row.dept, [C.handler]: row.handler,
     [C.acceptDate]: fmtDate(row.acceptDate), [C.solveDate]: fmtDate(row.solveDate),
-    [C.status]: row.status, [C.month]: row.month, [C.tags]: row.tags ?? '',
+    [C.status]: row.status, [C.month]: row.month,
   } : { ...EMPTY_FORM })
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   const [typeOpts,  setTypeOpts]  = useState(Q_TYPE_OPTS)
   const [stageOpts, setStageOpts] = useState(Q_STAGE_OPTS)
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const set = (k, v) => {
+    const next = { ...form, [k]: v }
+    // 受理日期变更时自动填充受理月份
+    if (k === C.acceptDate && v && v.length >= 7) {
+      next[C.month] = v.slice(0, 7)
+    }
+    setForm(next)
+  }
   async function submit() {
-    if (!form[C.question]) { setErr('咨询问题不能为空'); return }
+    const required = [
+      [C.question,   '咨询和受理问题'],
+      [C.answer,     '咨询建议和反馈'],
+      [C.qType,      '问题类型'],
+      [C.qStage,     '问题阶段'],
+      [C.contact,    '对接人'],
+      [C.dept,       '对接部门'],
+      [C.handler,    '处理人'],
+      [C.acceptDate, '受理日期'],
+    ]
+    for (const [k, label] of required) {
+      if (!form[k]) { setErr(`${label}不能为空`); return }
+    }
     setSaving(true); setErr('')
     try { await onSave(form) } catch (e) { setErr(e.message); setSaving(false) }
   }
@@ -583,19 +601,22 @@ function EditModal({ row, onClose, onSave }) {
         </div>
         <div className="p-5 overflow-y-auto flex flex-col gap-4">
           <LRow label="咨询和受理问题 *"><FTextarea value={form[C.question]} onChange={v => set(C.question, v)} rows={3} /></LRow>
-          <LRow label="咨询建议和反馈"><FTextarea value={form[C.answer]} onChange={v => set(C.answer, v)} rows={3} /></LRow>
+          <LRow label="咨询建议和反馈 *"><FTextarea value={form[C.answer]} onChange={v => set(C.answer, v)} rows={3} /></LRow>
           <div className="grid grid-cols-2 gap-3">
-            <LRow label="问题类型"><FCreatableSel value={form[C.qType]} onChange={v => set(C.qType, v)} options={typeOpts} setOptions={setTypeOpts} placeholder="请选择或输入新增" /></LRow>
-            <LRow label="问题阶段"><FCreatableSel value={form[C.qStage]} onChange={v => set(C.qStage, v)} options={stageOpts} setOptions={setStageOpts} placeholder="请选择或输入新增" /></LRow>
-            <LRow label="对接人"><FInput value={form[C.contact]} onChange={v => set(C.contact, v)} /></LRow>
-            <LRow label="对接部门"><FInput value={form[C.dept]} onChange={v => set(C.dept, v)} /></LRow>
-            <LRow label="处理人"><FInput value={form[C.handler]} onChange={v => set(C.handler, v)} /></LRow>
+            <LRow label="问题类型 *"><FCreatableSel value={form[C.qType]} onChange={v => set(C.qType, v)} options={typeOpts} setOptions={setTypeOpts} placeholder="请选择或输入新增" /></LRow>
+            <LRow label="问题阶段 *"><FCreatableSel value={form[C.qStage]} onChange={v => set(C.qStage, v)} options={stageOpts} setOptions={setStageOpts} placeholder="请选择或输入新增" /></LRow>
+            <LRow label="对接人 *"><FInput value={form[C.contact]} onChange={v => set(C.contact, v)} /></LRow>
+            <LRow label="对接部门 *"><FInput value={form[C.dept]} onChange={v => set(C.dept, v)} /></LRow>
+            <LRow label="处理人 *"><FInput value={form[C.handler]} onChange={v => set(C.handler, v)} /></LRow>
             <LRow label="事项状态"><FSel value={form[C.status]} onChange={v => set(C.status, v)} options={STATUS_OPTS} /></LRow>
-            <LRow label="受理日期"><FInput value={form[C.acceptDate]} onChange={v => set(C.acceptDate, v)} type="date" /></LRow>
+            <LRow label="受理日期 *"><FInput value={form[C.acceptDate]} onChange={v => set(C.acceptDate, v)} type="date" /></LRow>
             <LRow label="解决日期"><FInput value={form[C.solveDate]} onChange={v => set(C.solveDate, v)} type="date" /></LRow>
-            <LRow label="受理月份"><FInput value={form[C.month]} onChange={v => set(C.month, v)} placeholder="如：2025-03" /></LRow>
+            <LRow label="受理月份">
+              <div className="field text-sm" style={{ color: form[C.month] ? 'var(--text)' : 'var(--muted)', background: 'var(--surface2)' }}>
+                {form[C.month] || '根据受理日期自动生成'}
+              </div>
+            </LRow>
           </div>
-          <LRow label="标签"><TagInput value={form[C.tags]} onChange={v => set(C.tags, v)} /></LRow>
           {err && <p className="text-xs text-red-400">{err}</p>}
         </div>
         <div className="px-5 py-3 flex justify-end gap-2" style={{ borderTop: '1px solid var(--border)' }}>
@@ -641,19 +662,6 @@ function DetailModal({ row, onClose, onEdit, onDelete, isAdmin }) {
               <div className="text-sm leading-relaxed p-3 rounded-xl whitespace-pre-wrap"
                 style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }}>
                 {row.answer}
-              </div>
-            </div>
-          )}
-          {row.tags && (
-            <div>
-              <div className="text-xs mb-1.5 font-medium" style={{ color: 'var(--muted)' }}>标签</div>
-              <div className="flex flex-wrap gap-1.5">
-                {row.tags.split(',').map(t => t.trim()).filter(Boolean).map((t, i) => (
-                  <span key={i} className="px-2 py-0.5 rounded-full text-[11px] font-medium"
-                    style={{ background: 'rgba(99,102,241,0.12)', color: '#6366F1', border: '1px solid rgba(99,102,241,0.2)' }}>
-                    {t}
-                  </span>
-                ))}
               </div>
             </div>
           )}

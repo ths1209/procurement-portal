@@ -773,10 +773,11 @@ ${stats.byHandler.map(([h, n]) => `  - ${h}：${n} 条`).join('\n')}
 2. 点出本月咨询热点和高频问题领域
 3. 对关闭率情况给出评价，提出 1～2 条优化建议
 4. 最后一行单独注明：（本报告由 AI 辅助生成）`
-      const result = await callAIChat(prompt)
+      const timeout = new Promise(res => setTimeout(() => res(null), 30000))
+      const result = await Promise.race([callAIChat(prompt), timeout])
       setAiText(result ?? buildConsultingPlaceholder(year, month, stats))
-    } catch (e) {
-      setAiError('AI 生成失败：' + e.message)
+    } catch {
+      setAiText(buildConsultingPlaceholder(year, month, stats))
     } finally {
       setAiLoading(false); setAiProgress('')
     }

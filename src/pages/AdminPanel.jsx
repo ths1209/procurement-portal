@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { RefreshCw, UserCheck, UserX, ShieldCheck, Users } from 'lucide-react'
+import { RefreshCw, UserCheck, UserX, ShieldCheck, Users, BarChart2, Eye, MousePointer } from 'lucide-react'
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { listUsers, updateUser } from '../lib/teable'
 import { useAuth } from '../contexts/AuthContext'
+import { loadAnalytics } from '../lib/teableAnalytics'
 
 const STATUS_CFG = {
   pending:  { label:'待审批', bg:'rgba(245,158,11,0.12)',  color:'#B45309', dot:'#F59E0B' },
@@ -38,6 +40,13 @@ export default function AdminPanel() {
       setUsers(prev => prev.map(u => u.uid === uid ? { ...u, role } : u))
     } finally { setActionLoading(null) }
   }
+
+  const [analytics, setAnalytics] = useState(null)
+  const [analyticsLoading, setAnalyticsLoading] = useState(true)
+
+  useEffect(() => {
+    loadAnalytics().then(d => { setAnalytics(d); setAnalyticsLoading(false) }).catch(() => setAnalyticsLoading(false))
+  }, [])
 
   const filtered = filter === 'all' ? users : users.filter(u => u.status === filter)
   const counts = {
@@ -82,6 +91,9 @@ export default function AdminPanel() {
         ))}
       </div>
 
+      {/* 访问统计 */}
+      <AnalyticsSection data={analytics} loading={analyticsLoading} />
+
       {/* 用户表 */}
       {loading ? (
         <div className="card p-16 flex flex-col items-center gap-3">
@@ -121,6 +133,103 @@ export default function AdminPanel() {
             {filtered.length} 条{filtered.length < users.length ? ` / 共 ${users.length} 条` : ''}
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+// ─── 访问统计模块 ─────────────────────────────────────────────────────────────
+function AnalyticsSection({ data, loading }) {
+  const statCards = [
+    { label: '今日 PV', value: data?.todayPV ?? 0, icon: <Eye className="w-4 h-4" />, clr: '#6366F1' },
+    { label: '今日 UV', value: data?.todayUV ?? 0, icon: <Users className="w-4 h-4" />, clr: '#10B981' },
+    { label: '本月 PV', value: data?.monthPV ?? 0, icon: <BarChart2 className="w-4 h-4" />, clr: '#0EA5E9' },
+    { label: '本月 UV', value: data?.monthUV ?? 0, icon: <MousePointer className="w-4 h-4" />, clr: '#F59E0B' },
+  ]
+
+  return (
+    <div className="space-y-3">
+      {/* 标题 */}
+      <div className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+        style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+          style={{ background: 'rgba(99,102,241,0.1)', color: '#6366F1' }}>
+          <BarChart2 className="w-4 h-4" />
+        </div>
+        <div>
+          <h3 className="font-semibold text-[14px] leading-none" style={{ color: 'var(--text)' }}>访问统计</h3>
+          <p className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>网站 PV / UV 趋势 · 近 30 天</p>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="card p-10 flex items-center justify-center gap-3">
+          <div className="w-5 h-5 rounded-full border-2 animate-spin"
+            style={{ borderColor: 'rgba(99,102,241,0.2)', borderTopColor: '#6366F1' }} />
+          <span className="text-sm" style={{ color: 'var(--muted)' }}>加载统计数据…</span>
+        </div>
+      ) : (
+        <>
+          {/* 4 个指标卡 */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {statCards.map(s => (
+              <div key={s.label} className="card p-4 flex flex-col gap-2">
+                <div className="flex items-center gap-2" style={{ color: s.clr }}>
+                  {s.icon}
+                  <span className="text-xs font-medium" style={{ color: 'var(--muted)' }}>{s.label}</span>
+                </div>
+                <p className="text-2xl font-bold" style={{ color: s.clr }}>{s.value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* PV/UV 趋势折线图 */}
+          <div className="card p-5">
+            <p className="text-[12px] font-semibold mb-4" style={{ color: 'var(--text)' }}>近 30 天访问趋势</p>
+            <ResponsiveContainer width="100%" height={160}>
+              <LineChart data={data?.trend ?? []} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--muted)' }} tickLine={false} axisLine={false}
+                  interval={4} />
+                <YAxis tick={{ fontSize: 10, fill: 'var(--muted)' }} tickLine={false} axisLine={false} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 12 }}
+                  labelStyle={{ color: 'var(--text)', fontWeight: 600 }}
+                  formatter={(v, name) => [v, name === 'pv' ? 'PV（访问次数）' : 'UV（独立访客）']}
+                />
+                <Line type="monotone" dataKey="pv" stroke="#6366F1" strokeWidth={2} dot={false} name="pv" />
+                <Line type="monotone" dataKey="uv" stroke="#10B981" strokeWidth={2} dot={false} name="uv" />
+              </LineChart>
+            </ResponsiveContainer>
+            <div className="flex gap-4 mt-3 justify-center">
+              {[['#6366F1', 'PV 访问次数'], ['#10B981', 'UV 独立访客']].map(([clr, lbl]) => (
+                <div key={lbl} className="flex items-center gap-1.5">
+                  <div className="w-3 h-0.5 rounded" style={{ background: clr }} />
+                  <span className="text-[11px]" style={{ color: 'var(--muted)' }}>{lbl}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 页面访问排行 */}
+          {data?.pageRank?.length > 0 && (
+            <div className="card p-5">
+              <p className="text-[12px] font-semibold mb-4" style={{ color: 'var(--text)' }}>页面访问排行</p>
+              <ResponsiveContainer width="100%" height={140}>
+                <BarChart data={data.pageRank.slice(0, 6)} layout="vertical"
+                  margin={{ top: 0, right: 32, bottom: 0, left: 8 }}>
+                  <XAxis type="number" tick={{ fontSize: 10, fill: 'var(--muted)' }} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <YAxis type="category" dataKey="page" tick={{ fontSize: 11, fill: 'var(--text)' }} tickLine={false} axisLine={false} width={90} />
+                  <Tooltip
+                    contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 12 }}
+                    formatter={v => [v, 'PV']}
+                  />
+                  <Bar dataKey="pv" fill="#6366F1" radius={[0, 6, 6, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </>
       )}
     </div>
   )

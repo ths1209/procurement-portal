@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import talLogo from '../assets/tal-logo.png'
+import { trackVisit } from '../lib/teableAnalytics'
 import { createPortal } from 'react-dom'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { LayoutDashboard, ClipboardList, Medal, BookOpen, Users, LogOut, Menu, X, Sun, Moon, KeyRound } from 'lucide-react'
@@ -24,6 +25,12 @@ export default function Layout({ children }) {
   const isAdmin   = profile?.role === 'admin'
 
   function handleLogout() { logout(); navigate('/login', { replace: true }) }
+
+  // 路由变化时记录 PV/UV
+  useEffect(() => {
+    if (!profile) return
+    trackVisit({ userId: profile.email, displayName: profile.displayName || profile.email, page: location.pathname })
+  }, [location.pathname, profile?.email])
 
   const links = NAV.filter(n => !n.admin || isAdmin)
 

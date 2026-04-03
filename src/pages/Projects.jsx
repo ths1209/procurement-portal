@@ -985,8 +985,11 @@ function MonthlyReport({ rows, onClose }) {
 }
 
 // ─── 历史记录弹窗 ─────────────────────────────────────────────────────────────
-function HistoryModal({ row, onClose }) {
-  const entries = Array.isArray(row.history) ? [...row.history].reverse() : []
+function HistoryModal({ row, onClose, defaultTab = 'progress' }) {
+  const [tab, setTab] = useState(defaultTab)
+  const all      = Array.isArray(row.history) ? [...row.history].reverse() : []
+  const progress = all.filter(e => e.a === '本周进展更新')
+  const ops      = all.filter(e => e.a !== '本周进展更新')
 
   const ACTION_STYLE = {
     '创建项目':  { bg:'rgba(99,102,241,0.1)',  color:'#6366F1',  dot:'#818CF8' },
@@ -998,51 +1001,122 @@ function HistoryModal({ row, onClose }) {
   function fmtTime(iso) {
     if (!iso) return '—'
     const d = new Date(iso)
-    return d.toLocaleString('zh-CN', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' })
+    const week = ['周日','周一','周二','周三','周四','周五','周六'][d.getDay()]
+    return d.toLocaleString('zh-CN', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }) + ' ' + week
+  }
+
+  function fmtBy(by) {
+    if (!by) return '未知'
+    if (by.includes('@')) return by.split('@')[0]
+    return by
   }
 
   return (
-    <Modal title={`操作历史 · ${row.id || row.task?.slice(0,12) || '—'}`} onClose={onClose}>
-      <div className="p-5">
-        {entries.length === 0 ? (
-          <div className="text-center py-8">
-            <History className="w-8 h-8 mx-auto mb-2 opacity-20" style={{ color:'var(--muted)' }} />
-            <p className="text-sm" style={{ color:'var(--muted)' }}>暂无操作记录</p>
-          </div>
-        ) : (
-          <div className="relative">
-            <div className="absolute left-[7px] top-2 bottom-2 w-px" style={{ background:'var(--border)' }} />
-            <div className="space-y-4">
-              {entries.map((e, i) => {
-                const cfg = ACTION_STYLE[e.a] ?? { bg:'rgba(100,116,139,0.1)', color:'#64748B', dot:'#94A3B8' }
-                return (
-                  <div key={i} className="flex gap-3.5">
-                    <div className="w-3.5 h-3.5 rounded-full shrink-0 mt-0.5 z-10 ring-2"
-                      style={{ background:cfg.dot, ringColor:'var(--surface)' }} />
-                    <div className="flex-1 min-w-0 pb-1">
-                      <div className="flex items-center flex-wrap gap-2 mb-1">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold"
-                          style={{ background:cfg.bg, color:cfg.color }}>
-                          {e.a || '操作'}
-                        </span>
-                        <span className="text-[11px] font-mono" style={{ color:'var(--muted)' }}>{fmtTime(e.t)}</span>
-                      </div>
-                      <p className="text-[12px]" style={{ color:'var(--text)', opacity:0.65 }}>
-                        {e.by || '未知用户'}
-                        {e.n ? <span style={{ color:'var(--muted)' }}>：{e.n}</span> : ''}
-                      </p>
-                    </div>
-                  </div>
-                )
-              })}
+    <Modal title={`${row.id || row.task?.slice(0,12) || '—'} · 历史记录`} onClose={onClose}>
+      {/* Tab 切换 */}
+      <div className="flex px-5 pt-1 gap-1" style={{ borderBottom:'1px solid var(--border)' }}>
+        {[
+          { key:'progress', label:`进展记录`, count: progress.length, clr:'#F59E0B' },
+          { key:'ops',      label:`操作日志`, count: ops.length,      clr:'#6366F1' },
+        ].map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className="px-4 py-2.5 text-[12px] font-semibold transition-all relative"
+            style={{ color: tab===t.key ? t.clr : 'var(--muted)' }}>
+            {t.label}
+            <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px]"
+              style={{ background: tab===t.key ? `${t.clr}18` : 'var(--surface2)', color: tab===t.key ? t.clr : 'var(--muted)' }}>
+              {t.count}
+            </span>
+            {tab===t.key && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
+                style={{ background: t.clr }} />
+            )}
+          </button>
+        ))}
+      </div>
+
+      <div className="p-5 max-h-[420px] overflow-y-auto">
+        {/* ── 进展记录 Tab ── */}
+        {tab === 'progress' && (
+          progress.length === 0 ? (
+            <div className="text-center py-10">
+              <Bell className="w-8 h-8 mx-auto mb-2 opacity-20" style={{ color:'var(--muted)' }} />
+              <p className="text-sm" style={{ color:'var(--muted)' }}>暂无进展记录</p>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-3">
+              {progress.map((e, i) => (
+                <div key={i} className="rounded-2xl overflow-hidden"
+                  style={{ border:'1px solid rgba(245,158,11,0.2)', background:'rgba(245,158,11,0.03)' }}>
+                  {/* 头部：时间 + 提交人 */}
+                  <div className="flex items-center justify-between px-4 py-2.5"
+                    style={{ background:'rgba(245,158,11,0.07)', borderBottom:'1px solid rgba(245,158,11,0.12)' }}>
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-bold text-white"
+                        style={{ background:'#F59E0B' }}>
+                        {fmtBy(e.by)[0]?.toUpperCase() || '?'}
+                      </div>
+                      <span className="text-[12px] font-semibold" style={{ color:'#92400E' }}>
+                        {fmtBy(e.by)}
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-mono" style={{ color:'#B45309' }}>{fmtTime(e.t)}</span>
+                  </div>
+                  {/* 进展内容 */}
+                  <div className="px-4 py-3">
+                    <p className="text-[13px] leading-relaxed whitespace-pre-wrap" style={{ color:'var(--text)' }}>
+                      {e.n || '—'}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
         )}
-        <div className="mt-4 pt-3" style={{ borderTop:'1px solid var(--border)' }}>
-          <button onClick={onClose}
-            className="press w-full py-2.5 text-sm font-semibold rounded-xl"
-            style={{ background:'var(--surface2)', color:'var(--muted)' }}>关闭</button>
-        </div>
+
+        {/* ── 操作日志 Tab ── */}
+        {tab === 'ops' && (
+          ops.length === 0 ? (
+            <div className="text-center py-10">
+              <History className="w-8 h-8 mx-auto mb-2 opacity-20" style={{ color:'var(--muted)' }} />
+              <p className="text-sm" style={{ color:'var(--muted)' }}>暂无操作记录</p>
+            </div>
+          ) : (
+            <div className="relative">
+              <div className="absolute left-[7px] top-2 bottom-2 w-px" style={{ background:'var(--border)' }} />
+              <div className="space-y-4">
+                {ops.map((e, i) => {
+                  const cfg = ACTION_STYLE[e.a] ?? { bg:'rgba(100,116,139,0.1)', color:'#64748B', dot:'#94A3B8' }
+                  return (
+                    <div key={i} className="flex gap-3.5">
+                      <div className="w-3.5 h-3.5 rounded-full shrink-0 mt-0.5 z-10"
+                        style={{ background:cfg.dot, outline:'2px solid var(--surface)', outlineOffset:'1px' }} />
+                      <div className="flex-1 min-w-0 pb-1">
+                        <div className="flex items-center flex-wrap gap-2 mb-1">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold"
+                            style={{ background:cfg.bg, color:cfg.color }}>
+                            {e.a || '操作'}
+                          </span>
+                          <span className="text-[11px] font-mono" style={{ color:'var(--muted)' }}>{fmtTime(e.t)}</span>
+                        </div>
+                        <p className="text-[12px]" style={{ color:'var(--text)', opacity:0.65 }}>
+                          {fmtBy(e.by)}
+                          {e.n ? <span style={{ color:'var(--muted)' }}>：{e.n}</span> : ''}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        )}
+      </div>
+
+      <div className="px-5 pb-5">
+        <button onClick={onClose}
+          className="press w-full py-2.5 text-sm font-semibold rounded-xl"
+          style={{ background:'var(--surface2)', color:'var(--muted)' }}>关闭</button>
       </div>
     </Modal>
   )

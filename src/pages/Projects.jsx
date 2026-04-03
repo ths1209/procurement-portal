@@ -497,6 +497,103 @@ function GanttChart({ rows, orgFilter = '全部', setOrgFilter }) {
   )
 }
 
+// ─── 每周进展内嵌展示 ──────────────────────────────────────────────────────────
+function getISOWeekKey(iso) {
+  // 返回该时间戳所在ISO周的周一日期字符串，作为分组 key
+  const d = new Date(iso)
+  const day = d.getDay() === 0 ? 7 : d.getDay() // 1=周一 … 7=周日
+  const mon = new Date(d)
+  mon.setDate(d.getDate() - (day - 1))
+  mon.setHours(0, 0, 0, 0)
+  return mon.toISOString().slice(0, 10) // e.g. "2025-04-07"
+}
+
+function fmtWeekLabel(mondayStr) {
+  const mon = new Date(mondayStr)
+  const sun = new Date(mon); sun.setDate(mon.getDate() + 6)
+  const fmt = d => `${d.getMonth()+1}/${d.getDate()}`
+  return `${fmt(mon)} ~ ${fmt(sun)}`
+}
+
+function WeeklyProgressInline({ history }) {
+  if (!Array.isArray(history)) return null
+
+  // 只取 本周进展更新 类型，按时间正序
+  const entries = history
+    .filter(e => e.a === '本周进展更新' && e.t)
+    .sort((a, b) => new Date(a.t) - new Date(b.t))
+
+  if (entries.length === 0) return (
+    <div className="rounded-xl px-4 py-3 text-[12px]"
+      style={{ background:'rgba(245,158,11,0.04)', border:'1px solid rgba(245,158,11,0.15)', color:'var(--muted)' }}>
+      暂无每周进展记录
+    </div>
+  )
+
+  // 按 ISO 周分组，每周只保留最后一条
+  const weekMap = {}
+  for (const e of entries) {
+    const wk = getISOWeekKey(e.t)
+    weekMap[wk] = e // 后面的覆盖前面的，即最后一条
+  }
+
+  // 按周倒序排列（最近的在上）
+  const weeks = Object.keys(weekMap).sort((a, b) => b.localeCompare(a))
+
+  function fmtSubmitter(by) {
+    if (!by) return '未知'
+    if (by.includes('@')) return by.split('@')[0]
+    return by
+  }
+
+  function fmtTime(iso) {
+    const d = new Date(iso)
+    const week = ['周日','周一','周二','周三','周四','周五','周六'][d.getDay()]
+    return d.toLocaleString('zh-CN', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }) + ' ' + week
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] font-bold tracking-widest" style={{ color:'var(--muted)' }}>每周进展</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+        {weeks.map(wk => {
+          const e = weekMap[wk]
+          return (
+            <div key={wk} className="rounded-xl overflow-hidden"
+              style={{ border:'1px solid rgba(245,158,11,0.2)', background:'rgba(245,158,11,0.03)' }}>
+              {/* 周标题栏 */}
+              <div className="flex items-center justify-between px-3 py-2"
+                style={{ background:'rgba(245,158,11,0.08)', borderBottom:'1px solid rgba(245,158,11,0.12)' }}>
+                <span className="text-[11px] font-bold" style={{ color:'#92400E' }}>
+                  {fmtWeekLabel(wk)}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold text-white"
+                    style={{ background:'#F59E0B' }}>
+                    {fmtSubmitter(e.by)[0]?.toUpperCase() || '?'}
+                  </div>
+                  <span className="text-[10px] font-medium" style={{ color:'#B45309' }}>
+                    {fmtSubmitter(e.by)}
+                  </span>
+                  <span className="text-[10px] font-mono" style={{ color:'#B45309', opacity:0.7 }}>
+                    · {fmtTime(e.t)}
+                  </span>
+                </div>
+              </div>
+              {/* 进展内容 */}
+              <div className="px-3 py-2.5">
+                <p className="text-[12px] leading-relaxed whitespace-pre-wrap" style={{ color:'var(--text)' }}>
+                  {e.n || '—'}
+                </p>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ─── 表格行 ────────────────────────────────────────────────────────────────────
 function Row({ row, isAdmin, userEmail, open, onToggle, onEdit, onReview, onDelete, onHistory, onWeeklyUpdate }) {
   const sc  = STATUS_CFG[row.status]  ?? { bg:'rgba(100,116,139,0.1)', color:'#64748B', dot:'#94A3B8' }
@@ -617,14 +714,19 @@ function Row({ row, isAdmin, userEmail, open, onToggle, onEdit, onReview, onDele
       {open && (
         <tr>
           <td colSpan={12} className="px-6 py-4 animate-fade-in" style={{ background:'rgba(99,102,241,0.02)', borderBottom:'1px solid var(--border)' }}>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {[['工作任务（OKR）',row.task],['当前进展',row.progress],['任务清单',row.taskList],['逾期原因',row.lateReason]]
-                .filter(([,v])=>v).map(([l,v])=>(
-                <div key={l} className="rounded-xl p-3.5" style={{ background:'var(--surface)', border:'1px solid var(--border)' }}>
-                  <p className="text-[10px] font-bold tracking-widest uppercase mb-1.5" style={{ color:'var(--muted)' }}>{l}</p>
-                  <p className="text-[13px] whitespace-pre-wrap leading-relaxed" style={{ color:'var(--text)' }}>{v}</p>
-                </div>
-              ))}
+            <div className="space-y-3">
+              {/* 基本信息 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {[['工作任务（OKR）',row.task],['任务清单',row.taskList],['逾期原因',row.lateReason]]
+                  .filter(([,v])=>v).map(([l,v])=>(
+                  <div key={l} className="rounded-xl p-3.5" style={{ background:'var(--surface)', border:'1px solid var(--border)' }}>
+                    <p className="text-[10px] font-bold tracking-widest uppercase mb-1.5" style={{ color:'var(--muted)' }}>{l}</p>
+                    <p className="text-[13px] whitespace-pre-wrap leading-relaxed" style={{ color:'var(--text)' }}>{v}</p>
+                  </div>
+                ))}
+              </div>
+              {/* 每周进展 */}
+              <WeeklyProgressInline history={row.history} />
             </div>
           </td>
         </tr>

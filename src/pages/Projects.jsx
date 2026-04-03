@@ -658,7 +658,14 @@ function Row({ row, isAdmin, userEmail, open, onToggle, onEdit, onReview, onDele
           <div>
             <span className="text-[12px] font-medium whitespace-nowrap" style={{ color:'var(--text)' }}>{row.owner||'—'}</span>
             {row.ownerJobId && (
-              <p className="text-[10px] font-mono mt-0.5" style={{ color:'var(--muted)' }}>{row.ownerJobId}</p>
+              <div className="flex flex-wrap gap-1 mt-1">
+                {row.ownerJobId.split(/[,，\s]+/).filter(Boolean).map(id => (
+                  <span key={id} className="text-[10px] font-mono px-1.5 py-0.5 rounded-md"
+                    style={{ background:'var(--surface2)', color:'var(--muted)', border:'1px solid var(--border)' }}>
+                    {id}
+                  </span>
+                ))}
+              </div>
             )}
           </div>
         </td>
@@ -800,9 +807,11 @@ function ProjectForm({ initial, userEmail, userName, isAdmin, onClose, onSave })
             <input required value={f[F.owner]} onChange={e=>setF(p=>({...p,[F.owner]:e.target.value}))} className="field" />
           </div>
           <div>
-            <L req>责任人工号</L>
+            <L req>责任人工号
+              <span className="ml-1 font-normal" style={{ opacity:0.5 }}>（多人用逗号分隔，如 381639,394424）</span>
+            </L>
             <input required value={f[F.ownerJobId]} onChange={e=>setF(p=>({...p,[F.ownerJobId]:e.target.value}))}
-              placeholder="用于消息推送" className="field" />
+              placeholder="381639 或 381639,394424" className="field" />
           </div>
         </div>
         <div>

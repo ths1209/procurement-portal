@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Search, RefreshCw, Plus, ChevronDown, ExternalLink, Pencil, CheckCircle, XCircle, ChevronRight, History, FileText, Copy, Check, Sparkles, Loader2, Trash2 } from 'lucide-react'
+import { Search, RefreshCw, Plus, ChevronDown, ExternalLink, Pencil, CheckCircle, XCircle, ChevronRight, History, FileText, Copy, Check, Sparkles, Loader2, Trash2, Bell, X as XIcon } from 'lucide-react'
 import { listProjects, createProject, updateProject, deleteProject, isConfigured, F } from '../lib/teableProjects'
 import { notifyApproved } from '../lib/notify'
 import { generateMonthlySummary } from '../lib/aiSummary'
@@ -43,8 +43,40 @@ export default function Projects() {
   const [historyRow, setHistoryRow] = useState(null)
   const [reportOpen, setReportOpen] = useState(false)
   const [showGantt, setShowGantt] = useState(true)
+  const [weeklyRow, setWeeklyRow] = useState(null)
+  const [fridayBanner, setFridayBanner] = useState(false)
 
   useEffect(() => { load() }, [])
+
+  // 每周五 15:00 后显示进展维护提醒
+  useEffect(() => {
+    function checkFriday() {
+      const now = new Date()
+      const isValid = now.getDay() === 5 && now.getHours() >= 15
+      if (!isValid) return
+      const key = `pp_friday_remind_${now.toISOString().slice(0,10)}`
+      if (!localStorage.getItem(key)) setFridayBanner(true)
+    }
+    checkFriday()
+    const timer = setInterval(checkFriday, 60000)
+    return () => clearInterval(timer)
+  }, [])
+
+  function dismissFriday() {
+    const key = `pp_friday_remind_${new Date().toISOString().slice(0,10)}`
+    localStorage.setItem(key, '1')
+    setFridayBanner(false)
+  }
+
+  async function handleWeeklyUpdate(row, { progress, status }) {
+    await updateProject(
+      row._id,
+      { [F.progress]: progress, [F.status]: status },
+      { by: profile?.email, action: '本周进展更新', note: progress.slice(0, 50) },
+      row.history
+    )
+    load()
+  }
 
   async function load() {
     setLoading(true); setError(null)
@@ -130,6 +162,28 @@ export default function Projects() {
         </div>
       </div>
 
+      {/* 周五进展维护提醒 Banner */}
+      {fridayBanner && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-2xl animate-fade-in"
+          style={{ background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.3)' }}>
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+            style={{ background:'rgba(245,158,11,0.15)' }}>
+            <Bell className="w-4 h-4" style={{ color:'#F59E0B' }} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-semibold" style={{ color:'#B45309' }}>本周进展维护提醒</p>
+            <p className="text-[11px] mt-0.5" style={{ color:'#92400E' }}>
+              今天是周五下午，请点击各项目行中的「本周进展」按钮更新你的项目进展状态
+            </p>
+          </div>
+          <button onClick={dismissFriday}
+            className="press shrink-0 w-6 h-6 flex items-center justify-center rounded-lg"
+            style={{ background:'rgba(245,158,11,0.15)', color:'#B45309' }}>
+            <XIcon className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* 甘特图概览 */}
       {!loading && rows.length > 0 && (
         <div className="card overflow-hidden">
@@ -209,7 +263,8 @@ export default function Projects() {
                     onEdit={() => setFormRow(row)}
                     onReview={handleReview}
                     onDelete={handleDelete}
-                    onHistory={() => setHistoryRow(row)} />
+                    onHistory={() => setHistoryRow(row)}
+                    onWeeklyUpdate={() => setWeeklyRow(row)} />
                 ))}
               </tbody>
             </table>
@@ -222,6 +277,12 @@ export default function Projects() {
 
       {/* 历史记录弹窗 */}
       {historyRow && <HistoryModal row={historyRow} onClose={() => setHistoryRow(null)} />}
+
+      {/* 本周进展更新弹窗 */}
+      {weeklyRow && (
+        <WeeklyUpdateModal row={weeklyRow} onClose={() => setWeeklyRow(null)}
+          onSave={async (row, data) => { await handleWeeklyUpdate(row, data); setWeeklyRow(null) }} />
+      )}
 
       {/* 月报弹窗 */}
       {reportOpen && <MonthlyReport rows={rows} onClose={() => setReportOpen(false)} />}
@@ -437,7 +498,7 @@ function GanttChart({ rows, orgFilter = '全部', setOrgFilter }) {
 }
 
 // ─── 表格行 ────────────────────────────────────────────────────────────────────
-function Row({ row, isAdmin, userEmail, open, onToggle, onEdit, onReview, onDelete, onHistory }) {
+function Row({ row, isAdmin, userEmail, open, onToggle, onEdit, onReview, onDelete, onHistory, onWeeklyUpdate }) {
   const sc  = STATUS_CFG[row.status]  ?? { bg:'rgba(100,116,139,0.1)', color:'#64748B', dot:'#94A3B8' }
   const rc  = REVIEW_CFG[row.reviewStatus] ?? REVIEW_CFG['待审核']
   const oc  = ORG_CFG[row.org]
@@ -512,6 +573,14 @@ function Row({ row, isAdmin, userEmail, open, onToggle, onEdit, onReview, onDele
               title="查看操作历史">
               <History className="w-3 h-3" />
             </button>
+            {canEdit && row.status !== '已完成' && (
+              <button onClick={onWeeklyUpdate}
+                className="press flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-medium"
+                style={{ background:'rgba(245,158,11,0.08)', color:'#B45309', border:'1px solid rgba(245,158,11,0.2)' }}
+                title="更新本周进展">
+                <Bell className="w-3 h-3" /> 本周进展
+              </button>
+            )}
             {canEdit && (
               <button onClick={onEdit}
                 className="press flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-medium"
@@ -981,6 +1050,62 @@ function HistoryModal({ row, onClose }) {
 
 function DateCell({ v }) {
   return <span className="text-[11px] font-mono whitespace-nowrap" style={{ color:'var(--muted)' }}>{v ? String(v).slice(0,10) : '—'}</span>
+}
+
+// ─── 本周进展更新弹窗 ─────────────────────────────────────────────────────────
+function WeeklyUpdateModal({ row, onClose, onSave }) {
+  const [progress, setProgress] = useState(row.progress || '')
+  const [status,   setStatus]   = useState(row.status   || '进行中')
+  const [saving,   setSaving]   = useState(false)
+
+  async function submit(e) {
+    e.preventDefault()
+    if (!progress.trim()) return
+    setSaving(true)
+    try { await onSave(row, { progress, status }) }
+    catch(e) { alert('保存失败：' + e.message); setSaving(false) }
+  }
+
+  return (
+    <Modal title={`本周进展更新 · ${row.id || row.task?.slice(0,16) || '—'}`} onClose={onClose}>
+      <form onSubmit={submit} className="p-5 space-y-4">
+        {/* 任务名提示 */}
+        <div className="px-3 py-2.5 rounded-xl text-[12px] leading-relaxed"
+          style={{ background:'var(--surface2)', color:'var(--muted)', border:'1px solid var(--border)' }}>
+          {row.task || '—'}
+        </div>
+
+        {/* 本周进展内容 */}
+        <div>
+          <L req>本周进展内容</L>
+          <textarea value={progress} onChange={e => setProgress(e.target.value)}
+            rows={5} required placeholder="请填写本周完成的工作、当前阶段进展及下周计划…"
+            className="field resize-none w-full" />
+        </div>
+
+        {/* 项目状态 */}
+        <div>
+          <L>更新项目状态</L>
+          <select value={status} onChange={e => setStatus(e.target.value)} className="field">
+            {['未开始','进行中','已完成','逾期','暂停'].map(s => (
+              <option key={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex gap-2.5 pt-1">
+          <button type="button" onClick={onClose}
+            className="press flex-1 py-2.5 text-sm font-semibold rounded-xl"
+            style={{ background:'var(--surface2)', color:'var(--muted)' }}>取消</button>
+          <button type="submit" disabled={saving || !progress.trim()}
+            className="press flex-1 py-2.5 text-sm font-semibold text-white rounded-xl disabled:opacity-60"
+            style={{ background:'#F59E0B' }}>
+            {saving ? '保存中…' : '提交本周进展'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  )
 }
 function L({ children, req }) {
   return <label className="block text-xs font-semibold mb-1.5" style={{ color:'var(--text)', opacity:0.65 }}>{children}{req&&<span className="text-red-500 ml-0.5">*</span>}</label>

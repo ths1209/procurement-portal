@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Search, RefreshCw, Plus, ChevronDown, ExternalLink, Pencil, CheckCircle, XCircle, ChevronRight, History, FileText, Copy, Check, Sparkles, Loader2, Trash2, Bell, X as XIcon } from 'lucide-react'
+import { Search, RefreshCw, Plus, ChevronDown, ExternalLink, Pencil, CheckCircle, XCircle, ChevronRight, History, FileText, Copy, Check, Sparkles, Loader2, Trash2, Bell, X as XIcon, Send } from 'lucide-react'
 import { listProjects, createProject, updateProject, deleteProject, isConfigured, F } from '../lib/teableProjects'
-import { notifyApproved } from '../lib/notify'
+import { notifyApproved, notifyUrge } from '../lib/notify'
 import { generateMonthlySummary } from '../lib/aiSummary'
 import { useAuth } from '../contexts/AuthContext'
 import { Modal } from './Dashboard'
@@ -44,6 +44,7 @@ export default function Projects() {
   const [reportOpen, setReportOpen] = useState(false)
   const [showGantt, setShowGantt] = useState(true)
   const [weeklyRow, setWeeklyRow] = useState(null)
+  const [urgeRow, setUrgeRow] = useState(null)
   const [fridayBanner, setFridayBanner] = useState(false)
 
   useEffect(() => { load() }, [])
@@ -264,7 +265,8 @@ export default function Projects() {
                     onReview={handleReview}
                     onDelete={handleDelete}
                     onHistory={() => setHistoryRow(row)}
-                    onWeeklyUpdate={() => setWeeklyRow(row)} />
+                    onWeeklyUpdate={() => setWeeklyRow(row)}
+                    onUrge={() => setUrgeRow(row)} />
                 ))}
               </tbody>
             </table>
@@ -282,6 +284,12 @@ export default function Projects() {
       {weeklyRow && (
         <WeeklyUpdateModal row={weeklyRow} onClose={() => setWeeklyRow(null)}
           onSave={async (row, data) => { await handleWeeklyUpdate(row, data); setWeeklyRow(null) }} />
+      )}
+
+      {/* 催办弹窗 */}
+      {urgeRow && (
+        <UrgeModal row={urgeRow} sender={profile?.displayName || profile?.email}
+          onClose={() => setUrgeRow(null)} />
       )}
 
       {/* 月报弹窗 */}
@@ -595,7 +603,7 @@ function WeeklyProgressInline({ history }) {
 }
 
 // ─── 表格行 ────────────────────────────────────────────────────────────────────
-function Row({ row, isAdmin, userEmail, open, onToggle, onEdit, onReview, onDelete, onHistory, onWeeklyUpdate }) {
+function Row({ row, isAdmin, userEmail, open, onToggle, onEdit, onReview, onDelete, onHistory, onWeeklyUpdate, onUrge }) {
   const sc  = STATUS_CFG[row.status]  ?? { bg:'rgba(100,116,139,0.1)', color:'#64748B', dot:'#94A3B8' }
   const rc  = REVIEW_CFG[row.reviewStatus] ?? REVIEW_CFG['待审核']
   const oc  = ORG_CFG[row.org]
@@ -676,6 +684,14 @@ function Row({ row, isAdmin, userEmail, open, onToggle, onEdit, onReview, onDele
                 style={{ background:'rgba(245,158,11,0.08)', color:'#B45309', border:'1px solid rgba(245,158,11,0.2)' }}
                 title="更新本周进展">
                 <Bell className="w-3 h-3" /> 本周进展
+              </button>
+            )}
+            {isAdmin && row.status !== '已完成' && (
+              <button onClick={onUrge}
+                className="press flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-medium"
+                style={{ background:'rgba(239,68,68,0.07)', color:'#DC2626', border:'1px solid rgba(239,68,68,0.18)' }}
+                title="催办负责人">
+                <Send className="w-3 h-3" /> 催办
               </button>
             )}
             {canEdit && (
@@ -1283,6 +1299,98 @@ function WeeklyUpdateModal({ row, onClose, onSave }) {
     </Modal>
   )
 }
+// ─── 催办弹窗 ──────────────────────────────────────────────────────────────────
+function UrgeModal({ row, sender, onClose }) {
+  // 将责任人工号拆成多行便于编辑
+  const initIds = (row.ownerJobId || '').split(/[,，\s]+/).filter(Boolean).join('\n')
+  const [jobIds, setJobIds] = useState(initIds)
+  const [sending, setSending] = useState(false)
+  const [result,  setResult]  = useState(null) // { ok, sent, failed, details }
+
+  async function submit(e) {
+    e.preventDefault()
+    const ids = jobIds.split(/[\n,，\s]+/).map(s => s.trim()).filter(Boolean)
+    if (ids.length === 0) return
+    setSending(true)
+    const res = await notifyUrge(ids, row, sender)
+    setResult(res)
+    setSending(false)
+  }
+
+  return (
+    <Modal title={`催办 · ${row.id || row.task?.slice(0,16) || '—'}`} onClose={onClose}>
+      <div className="p-5 space-y-4">
+        {/* 项目摘要 */}
+        <div className="rounded-xl px-3 py-2.5 text-[12px] leading-relaxed"
+          style={{ background:'var(--surface2)', color:'var(--muted)', border:'1px solid var(--border)' }}>
+          <span className="font-semibold" style={{ color:'var(--text)' }}>{row.task?.slice(0,50) || '—'}</span>
+          <span className="ml-2">· {row.owner || '—'} · {row.status || '—'}</span>
+        </div>
+
+        {result ? (
+          /* 发送结果 */
+          <div className="space-y-3">
+            <div className="rounded-xl p-4 text-center"
+              style={{ background: result.ok ? 'rgba(16,185,129,0.06)' : 'rgba(244,63,94,0.06)',
+                       border: `1px solid ${result.ok ? 'rgba(16,185,129,0.2)' : 'rgba(244,63,94,0.2)'}` }}>
+              <p className="text-2xl mb-1">{result.ok ? '✅' : '❌'}</p>
+              <p className="text-[13px] font-semibold" style={{ color: result.ok ? '#059669' : '#E11D48' }}>
+                {result.ok ? `催办已发送（${result.sent} 人）` : '发送失败'}
+              </p>
+              {result.failed > 0 && (
+                <p className="text-[11px] mt-0.5" style={{ color:'var(--muted)' }}>
+                  {result.failed} 个工号发送失败
+                </p>
+              )}
+            </div>
+            <div className="rounded-xl p-3 space-y-1"
+              style={{ background:'var(--surface2)', border:'1px solid var(--border)' }}>
+              {result.details.map((d, i) => (
+                <p key={i} className="text-[11px] font-mono" style={{ color: d.startsWith('✓') ? '#059669' : '#E11D48' }}>{d}</p>
+              ))}
+            </div>
+            <button onClick={onClose}
+              className="press w-full py-2.5 text-sm font-semibold rounded-xl"
+              style={{ background:'var(--surface2)', color:'var(--muted)' }}>关闭</button>
+          </div>
+        ) : (
+          /* 编辑工号 + 发送 */
+          <form onSubmit={submit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color:'var(--text)', opacity:0.65 }}>
+                接收人工号 <span className="text-red-500">*</span>
+                <span className="ml-1.5 font-normal" style={{ opacity:0.55 }}>（每行一个，支持多人同时触达）</span>
+              </label>
+              <textarea value={jobIds} onChange={e => setJobIds(e.target.value)}
+                rows={4} required placeholder={"12345\n67890\n..."}
+                className="field resize-none w-full font-mono text-[13px]" />
+              <p className="text-[11px] mt-1" style={{ color:'var(--muted)' }}>
+                当前填写：{jobIds.split(/[\n,，\s]+/).filter(s=>s.trim()).length} 个工号
+              </p>
+            </div>
+
+            <div className="rounded-xl px-3 py-2.5 text-[12px]"
+              style={{ background:'rgba(239,68,68,0.05)', border:'1px solid rgba(239,68,68,0.15)', color:'#991B1B' }}>
+              将向以上工号发送数环通催办消息，提醒负责人及时更新项目进展。
+            </div>
+
+            <div className="flex gap-2.5">
+              <button type="button" onClick={onClose}
+                className="press flex-1 py-2.5 text-sm font-semibold rounded-xl"
+                style={{ background:'var(--surface2)', color:'var(--muted)' }}>取消</button>
+              <button type="submit" disabled={sending || !jobIds.trim()}
+                className="press flex-1 py-2.5 text-sm font-semibold text-white rounded-xl disabled:opacity-60 flex items-center justify-center gap-2"
+                style={{ background:'#DC2626' }}>
+                {sending ? <><Loader2 className="w-4 h-4 animate-spin" />发送中…</> : <><Send className="w-4 h-4" />发送催办</>}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
 function L({ children, req }) {
   return <label className="block text-xs font-semibold mb-1.5" style={{ color:'var(--text)', opacity:0.65 }}>{children}{req&&<span className="text-red-500 ml-0.5">*</span>}</label>
 }

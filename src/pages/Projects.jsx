@@ -134,7 +134,7 @@ export default function Projects() {
       (orgFilter === '全部' || r.org === orgFilter) &&
       (!search || r.task?.includes(search) || r.owner?.includes(search) || r.id?.includes(search) || r.ownerJobId?.includes(search))
     )
-    return filtered.sort((a, b) => parseProjectId(a.id) - parseProjectId(b.id))
+    return filtered.slice().sort((a, b) => parseProjectId(a.id) - parseProjectId(b.id))
   }, [rows, search, filter, orgFilter])
 
   const counts = useMemo(() => {
@@ -782,10 +782,19 @@ function Row({ row, isAdmin, userEmail, open, onToggle, onEdit, onReview, onDele
 // ─── 新建/编辑表单 ─────────────────────────────────────────────────────────────
 function ProjectForm({ initial, userEmail, userName, isAdmin, allRows = [], onClose, onSave }) {
   const isNew = !initial._id
+
+  // 拆解初始编号，如 FY27-016 → yr='27', seq='016'
+  const initId = initial.id || (isNew ? nextProjectId(allRows) : '')
+  const initMatch = initId.match(/^FY(\d+)-(\d+)$/i)
+  const [idYr,  setIdYr]  = useState(initMatch ? initMatch[1] : String(new Date().getFullYear()).slice(-2))
+  const [idSeq, setIdSeq] = useState(initMatch ? initMatch[2] : (isNew ? String(allRows.filter(r => /^FY/.test(r.id)).length + 1).padStart(3,'0') : ''))
+
+  const composedId = `FY${idYr}-${idSeq}`
+
   const [saving, setSaving] = useState(false)
   const [idErr, setIdErr] = useState('')
   const [f, setF] = useState({
-    [F.id]:          initial.id          || (isNew ? nextProjectId(allRows) : ''),
+    [F.id]:          initId,
     [F.task]:        initial.task        || '',
     [F.startDate]:   initial.startDate   || new Date().toISOString().slice(0,10),
     [F.planDate]:    initial.planDate    || '',
@@ -804,12 +813,11 @@ function ProjectForm({ initial, userEmail, userName, isAdmin, allRows = [], onCl
 
   async function submit(e) {
     e.preventDefault()
-    if (!/^FY\d{2}-\d+$/.test(f[F.id])) {
-      setIdErr('格式须为 FYxx-xxx，如 FY27-016')
-      return
-    }
+    if (!idYr || !idSeq) { setIdErr('年份和序号均不能为空'); return }
     setSaving(true)
-    try { await onSave(f) } catch(err) { alert('保存失败：'+err.message) } finally { setSaving(false) }
+    try { await onSave({ ...f, [F.id]: composedId }) }
+    catch(err) { alert('保存失败：'+err.message) }
+    finally { setSaving(false) }
   }
 
   return (
@@ -818,13 +826,31 @@ function ProjectForm({ initial, userEmail, userName, isAdmin, allRows = [], onCl
         <div className="grid grid-cols-2 gap-3">
           <div>
             <L req>编号</L>
-            <input required value={f[F.id]}
-              onChange={e => {
-                const v = e.target.value.toUpperCase()
-                setF(p => ({ ...p, [F.id]: v }))
-                setIdErr(/^FY\d{2}-\d+$/.test(v) || v === '' ? '' : '格式须为 FYxx-xxx，如 FY27-016')
-              }}
-              placeholder="FY27-016" className={`field ${idErr ? 'border-red-400' : ''}`} />
+            <div className="flex items-center gap-0 rounded-xl overflow-hidden"
+              style={{ border: `1px solid ${idErr ? '#F87171' : 'var(--border)'}`, background:'var(--surface)' }}>
+              {/* 固定前缀 FY */}
+              <span className="px-2.5 py-2 text-[13px] font-bold shrink-0 select-none"
+                style={{ background:'var(--surface2)', color:'var(--muted)', borderRight:'1px solid var(--border)' }}>
+                FY
+              </span>
+              {/* 年份：2位 */}
+              <input value={idYr} onChange={e => { setIdYr(e.target.value.replace(/\D/g,'')); setIdErr('') }}
+                maxLength={2} placeholder="27"
+                className="w-10 text-center text-[13px] font-mono py-2 bg-transparent outline-none"
+                style={{ color:'var(--text)' }} />
+              {/* 分隔符 - */}
+              <span className="text-[13px] font-bold select-none" style={{ color:'var(--muted)' }}>-</span>
+              {/* 序号：3位 */}
+              <input value={idSeq} onChange={e => { setIdSeq(e.target.value.replace(/\D/g,'')); setIdErr('') }}
+                maxLength={4} placeholder="001"
+                className="w-14 text-center text-[13px] font-mono py-2 bg-transparent outline-none"
+                style={{ color:'var(--text)' }} />
+              {/* 预览 */}
+              <span className="ml-auto pr-2.5 text-[11px] shrink-0 select-none"
+                style={{ color:'var(--muted)', opacity: idYr && idSeq ? 0.7 : 0 }}>
+                {composedId}
+              </span>
+            </div>
             {idErr && <p className="text-[11px] mt-1" style={{ color:'#F43F5E' }}>{idErr}</p>}
           </div>
           <div>

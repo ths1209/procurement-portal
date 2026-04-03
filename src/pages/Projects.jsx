@@ -29,6 +29,24 @@ const STATUS_BAR_CLR = {
 const STATUS_COLS = ['全部','未开始','进行中','已完成','逾期','暂停']
 const ORG_OPTS    = ['运营分析组', '采购稽核组', '支付类合作商管理组']
 
+// FY27-003 → 2700003（年份*100000 + 序号），保证跨年正确排序
+function parseProjectId(id) {
+  const m = String(id || '').match(/^FY(\d+)-(\d+)$/i)
+  if (!m) return Infinity
+  return parseInt(m[1]) * 100000 + parseInt(m[2])
+}
+
+// 根据现有编号列表推断下一个编号，如 FY27-015 → FY27-016
+function nextProjectId(rows) {
+  const yr = String(new Date().getFullYear()).slice(-2) // "27"
+  const prefix = `FY${yr}-`
+  const nums = rows
+    .map(r => { const m = String(r.id||'').match(/^FY\d+-(\d+)$/i); return m ? parseInt(m[1]) : 0 })
+    .filter(n => n > 0)
+  const next = nums.length > 0 ? Math.max(...nums) + 1 : 1
+  return `${prefix}${String(next).padStart(3, '0')}`
+}
+
 export default function Projects() {
   const { profile } = useAuth()
   const isAdmin = profile?.role === 'admin'
@@ -110,11 +128,14 @@ export default function Projects() {
     } catch(e) { alert('操作失败：'+e.message) }
   }
 
-  const shown = useMemo(() => rows.filter(r =>
-    (filter === '全部' || r.status === filter) &&
-    (orgFilter === '全部' || r.org === orgFilter) &&
-    (!search || r.task?.includes(search) || r.owner?.includes(search) || r.id?.includes(search) || r.ownerJobId?.includes(search))
-  ), [rows, search, filter, orgFilter])
+  const shown = useMemo(() => {
+    const filtered = rows.filter(r =>
+      (filter === '全部' || r.status === filter) &&
+      (orgFilter === '全部' || r.org === orgFilter) &&
+      (!search || r.task?.includes(search) || r.owner?.includes(search) || r.id?.includes(search) || r.ownerJobId?.includes(search))
+    )
+    return filtered.sort((a, b) => parseProjectId(a.id) - parseProjectId(b.id))
+  }, [rows, search, filter, orgFilter])
 
   const counts = useMemo(() => {
     const base = orgFilter === '全部' ? rows : rows.filter(r => r.org === orgFilter)
@@ -298,7 +319,7 @@ export default function Projects() {
       {/* 新建/编辑弹窗 */}
       {formRow !== null && (
         <ProjectForm initial={formRow} userEmail={profile?.email} userName={profile?.displayName}
-          isAdmin={isAdmin}
+          isAdmin={isAdmin} allRows={rows}
           onClose={() => setFormRow(null)}
           onSave={async fields => {
             if (formRow._id) {
@@ -759,11 +780,12 @@ function Row({ row, isAdmin, userEmail, open, onToggle, onEdit, onReview, onDele
 }
 
 // ─── 新建/编辑表单 ─────────────────────────────────────────────────────────────
-function ProjectForm({ initial, userEmail, userName, isAdmin, onClose, onSave }) {
+function ProjectForm({ initial, userEmail, userName, isAdmin, allRows = [], onClose, onSave }) {
   const isNew = !initial._id
   const [saving, setSaving] = useState(false)
+  const [idErr, setIdErr] = useState('')
   const [f, setF] = useState({
-    [F.id]:          initial.id          || '',
+    [F.id]:          initial.id          || (isNew ? nextProjectId(allRows) : ''),
     [F.task]:        initial.task        || '',
     [F.startDate]:   initial.startDate   || new Date().toISOString().slice(0,10),
     [F.planDate]:    initial.planDate    || '',
@@ -781,7 +803,12 @@ function ProjectForm({ initial, userEmail, userName, isAdmin, onClose, onSave })
   })
 
   async function submit(e) {
-    e.preventDefault(); setSaving(true)
+    e.preventDefault()
+    if (!/^FY\d{2}-\d+$/.test(f[F.id])) {
+      setIdErr('格式须为 FYxx-xxx，如 FY27-016')
+      return
+    }
+    setSaving(true)
     try { await onSave(f) } catch(err) { alert('保存失败：'+err.message) } finally { setSaving(false) }
   }
 
@@ -791,7 +818,14 @@ function ProjectForm({ initial, userEmail, userName, isAdmin, onClose, onSave })
         <div className="grid grid-cols-2 gap-3">
           <div>
             <L req>编号</L>
-            <input required value={f[F.id]} onChange={e=>setF(p=>({...p,[F.id]:e.target.value}))} placeholder="如 P-001" className="field" />
+            <input required value={f[F.id]}
+              onChange={e => {
+                const v = e.target.value.toUpperCase()
+                setF(p => ({ ...p, [F.id]: v }))
+                setIdErr(/^FY\d{2}-\d+$/.test(v) || v === '' ? '' : '格式须为 FYxx-xxx，如 FY27-016')
+              }}
+              placeholder="FY27-016" className={`field ${idErr ? 'border-red-400' : ''}`} />
+            {idErr && <p className="text-[11px] mt-1" style={{ color:'#F43F5E' }}>{idErr}</p>}
           </div>
           <div>
             <L req>采购组织</L>

@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Plus, ExternalLink, Eye, X, BarChart3, Package, Download, Upload } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
-import { listAllTools, createFileTool, createUrlTool, createDashItem, deleteFileTool, trackDownload, isToolsConfigured } from '../lib/teableTools'
+import { listAllTools, createFileTool, createUrlTool, createDashItem, deleteFileTool, trackDownload, approveTool, isToolsConfigured } from '../lib/teableTools'
+import { Clock, CheckCircle, XCircle } from 'lucide-react'
 
 const GRADS = ['#6366F1','#0EA5E9','#10B981','#F59E0B','#8B5CF6','#14B8A6','#F97316','#EC4899']
 
@@ -46,8 +47,9 @@ export default function Dashboard() {
   // localStorage 仅在 Teable 未配置时作为本地回退
   const ai   = useLocal('pp_ai',   DEFAULT_AI)
   const dash = useLocal('pp_dash', DEFAULT_DASH)
-  const [teableData, setTeableData] = useState({ fileTools:[], urlTools:[], dashItems:[] })
+  const [teableData, setTeableData] = useState({ fileTools:[], urlTools:[], dashItems:[], pending:[] })
   const [addGroup,  setAddGroup]  = useState(null)
+  const [approving, setApproving] = useState(null)
 
   const configured = isToolsConfigured()
   const fileTools = configured ? teableData.fileTools : []
@@ -111,6 +113,46 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* 待审批工具（仅管理员可见） */}
+      {isAdmin && teableData.pending?.length > 0 && (
+        <div className="rounded-2xl overflow-hidden" style={{ border:'1px solid rgba(245,158,11,0.3)', background:'rgba(245,158,11,0.03)' }}>
+          <div className="flex items-center gap-2.5 px-4 py-3" style={{ background:'rgba(245,158,11,0.08)', borderBottom:'1px solid rgba(245,158,11,0.15)' }}>
+            <Clock className="w-4 h-4 shrink-0" style={{ color:'#B45309' }} />
+            <span className="text-[13px] font-semibold" style={{ color:'#92400E' }}>待审批工具</span>
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold" style={{ background:'rgba(245,158,11,0.2)', color:'#B45309' }}>
+              {teableData.pending.length}
+            </span>
+          </div>
+          <div className="divide-y" style={{ divideColor:'rgba(245,158,11,0.1)' }}>
+            {teableData.pending.map(t => (
+              <div key={t._id} className="flex items-center gap-3 px-4 py-3">
+                <span className="text-xl shrink-0 w-7 text-center select-none">{t.icon || '📎'}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-medium truncate" style={{ color:'var(--text)' }}>{t.name}</p>
+                  <p className="text-[11px]" style={{ color:'var(--muted)' }}>
+                    {t.toolType} · {t.uploadedBy || '未知'} · {t.group || '—'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button disabled={approving === t._id}
+                    onClick={async () => { setApproving(t._id); await approveTool(t._id, true); await loadTools(); setApproving(null) }}
+                    className="press flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold disabled:opacity-50"
+                    style={{ background:'rgba(16,185,129,0.1)', color:'#059669', border:'1px solid rgba(16,185,129,0.2)' }}>
+                    <CheckCircle className="w-3 h-3" /> 批准
+                  </button>
+                  <button disabled={approving === t._id}
+                    onClick={async () => { setApproving(t._id); await approveTool(t._id, false); await loadTools(); setApproving(null) }}
+                    className="press flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold disabled:opacity-50"
+                    style={{ background:'rgba(244,63,94,0.08)', color:'#E11D48', border:'1px solid rgba(244,63,94,0.15)' }}>
+                    <XCircle className="w-3 h-3" /> 驳回
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* 百宝箱 */}
       <Section
         title="百宝箱" sub="团队工具一站直达，按组快速查找"
@@ -151,7 +193,7 @@ export default function Dashboard() {
       {addGroup && addGroup !== '__dash__' && (
         <AddToolModal group={addGroup} onClose={() => setAddGroup(null)}
           onSaveUrl={async x => {
-            if (configured) { await createUrlTool(x, profile?.displayName || profile?.email); await loadTools() }
+            if (configured) { await createUrlTool(x, profile?.displayName || profile?.email); await loadTools(); alert('提交成功，等待管理员审批后即可显示') }
             else { ai.add(x) }
             setAddGroup(null)
           }}
@@ -159,6 +201,7 @@ export default function Dashboard() {
             await createFileTool(meta, profile?.displayName || profile?.email)
             await loadTools()
             setAddGroup(null)
+            alert('提交成功，等待管理员审批后即可显示')
           }}
         />
       )}

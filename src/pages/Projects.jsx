@@ -295,7 +295,8 @@ export default function Projects() {
                     onDelete={handleDelete}
                     onHistory={() => setHistoryRow(row)}
                     onWeeklyUpdate={() => setWeeklyRow(row)}
-                    onUrge={() => setUrgeRow(row)} />
+                    onUrge={() => setUrgeRow(row)}
+                    userJobId={profile?.jobId} />
                 ))}
               </tbody>
             </table>
@@ -632,11 +633,15 @@ function WeeklyProgressInline({ history }) {
 }
 
 // ─── 表格行 ────────────────────────────────────────────────────────────────────
-function Row({ row, isAdmin, userEmail, open, onToggle, onEdit, onReview, onDelete, onHistory, onWeeklyUpdate, onUrge }) {
+function Row({ row, isAdmin, userEmail, userJobId, open, onToggle, onEdit, onReview, onDelete, onHistory, onWeeklyUpdate, onUrge }) {
   const sc  = STATUS_CFG[row.status]  ?? { bg:'rgba(100,116,139,0.1)', color:'#64748B', dot:'#94A3B8' }
   const rc  = REVIEW_CFG[row.reviewStatus] ?? REVIEW_CFG['待审核']
   const oc  = ORG_CFG[row.org]
-  const canEdit = isAdmin || row.createdBy === userEmail
+  // 可编辑：管理员 | 创建人 | ownerJobId 中包含自己工号的负责人
+  const myJobId = userJobId?.trim()
+  const ownerIds = (row.ownerJobId || '').split(/[,，\s]+/).map(s => s.trim()).filter(Boolean)
+  const isOwner = myJobId && ownerIds.includes(myJobId)
+  const canEdit = isAdmin || row.createdBy === userEmail || isOwner
 
   return (
     <>

@@ -14,6 +14,7 @@ export const FT = {
   uploadedBy: '上传人',
   toolType:   '类型',        // 文件工具 | 链接工具 | 数据看板
   toolUrl:    '工具链接',    // 链接工具/看板的目标URL
+  status:     '审核状态',    // pending | active | rejected
 }
 
 const FIELD_DEFS = [
@@ -32,6 +33,9 @@ const FIELD_DEFS = [
     { name: '文件工具' }, { name: '链接工具' }, { name: '数据看板' },
   ]}},
   { name: FT.toolUrl,    type: 'singleLineText' },
+  { name: FT.status,     type: 'singleSelect', options: { choices: [
+    { name: 'pending' }, { name: 'active' }, { name: 'rejected' },
+  ]}},
 ]
 
 // 缓存附件字段 ID（避免每次上传都查询字段列表）
@@ -68,6 +72,7 @@ function normTool(r) {
     hasFile:    !!att,
     toolType:   f[FT.toolType]  ?? '文件工具',
     url:        f[FT.toolUrl]   ?? '',
+    status:     f[FT.status]    ?? 'active',   // 旧数据没有此字段时默认 active
   }
 }
 
@@ -112,16 +117,27 @@ export async function listFileTools() {
   return (data.records ?? []).map(normTool).filter(t => !t.toolType || t.toolType === '文件工具')
 }
 
-/** 一次性拉取所有类型工具，按类型分组返回 */
+/** 一次性拉取所有类型工具，按类型分组返回（只含 active） */
 export async function listAllTools() {
   if (!TID) return { fileTools: [], urlTools: [], dashItems: [] }
   const data = await req(`/table/${TID}/record?take=500&fieldKeyType=name`)
   const all = (data.records ?? []).map(normTool)
+  const active = all.filter(t => t.status === 'active' || t.status === '')
   return {
-    fileTools: all.filter(t => !t.toolType || t.toolType === '文件工具'),
-    urlTools:  all.filter(t => t.toolType === '链接工具'),
-    dashItems: all.filter(t => t.toolType === '数据看板'),
+    fileTools: active.filter(t => !t.toolType || t.toolType === '文件工具'),
+    urlTools:  active.filter(t => t.toolType === '链接工具'),
+    dashItems: active.filter(t => t.toolType === '数据看板'),
+    pending:   all.filter(t => t.status === 'pending'),
   }
+}
+
+/** 审批工具（管理员） */
+export async function approveTool(recordId, approved) {
+  if (!TID) throw new Error('未配置工具表')
+  await req(`/table/${TID}/record`, {
+    method: 'PATCH',
+    body: JSON.stringify({ records: [{ id: recordId, fields: { [FT.status]: approved ? 'active' : 'rejected' } }] }),
+  })
 }
 
 export async function createUrlTool({ name, icon, desc, group, url }, addedBy) {
@@ -134,6 +150,7 @@ export async function createUrlTool({ name, icon, desc, group, url }, addedBy) {
     [FT.toolType]: '链接工具',
     [FT.toolUrl]:  url   || '',
     [FT.uploadedBy]: addedBy || '',
+    [FT.status]:   'pending',
   })
   let data
   try {
@@ -156,6 +173,7 @@ export async function createDashItem({ name, icon, desc, url }, addedBy) {
     [FT.toolType]: '数据看板',
     [FT.toolUrl]:  url  || '',
     [FT.uploadedBy]: addedBy || '',
+    [FT.status]:   'pending',
   })
   let data
   try {
@@ -202,6 +220,7 @@ export async function createFileTool({ name, icon, desc, group, fileUrl, fileNam
     [FT.fileName]:   fileName || '',
     [FT.downloads]:  0,
     [FT.uploadedBy]: uploadedBy || '',
+    [FT.status]:     'pending',
   })
 
   let data

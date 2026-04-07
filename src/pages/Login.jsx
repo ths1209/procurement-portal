@@ -10,6 +10,9 @@ export default function Login() {
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
   const [name, setName]         = useState('')
+  const [jobId, setJobId]       = useState('')
+  const [dept, setDept]         = useState('')
+  const [group, setGroup]       = useState('')
   const [showPwd, setShowPwd]   = useState(false)
   const [error, setError]       = useState('')
   const [loading, setLoading]   = useState(false)
@@ -26,7 +29,9 @@ export default function Login() {
         navigate('/dashboard', { replace: true })
       } else {
         if (name.trim().length < 2) { setError('姓名至少 2 个字符'); return }
-        await register(email, password, name.trim())
+        if (!dept) { setError('请选择所在部门'); return }
+        if (!jobId.trim()) { setError('请填写工号'); return }
+        await register(email, password, name.trim(), { jobId: jobId.trim(), dept, group })
         setDone(true)
       }
     } catch (err) { setError(parseErr(err.message)) }
@@ -107,6 +112,36 @@ export default function Login() {
 
           <form onSubmit={submit} className="space-y-3.5">
             {mode === 'register' && <Field label="姓名" value={name} onChange={setName} placeholder="请输入真实姓名" />}
+            {mode === 'register' && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color:'var(--text)', opacity:0.75 }}>
+                    所在部门 <span className="text-red-500">*</span>
+                  </label>
+                  <select required value={dept} onChange={e => { setDept(e.target.value); setGroup('') }} className="field">
+                    <option value="">请选择</option>
+                    <option>采购运营组</option>
+                    <option>集团采购部</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color:'var(--text)', opacity:0.75 }}>工号 <span className="text-red-500">*</span></label>
+                  <input value={jobId} onChange={e => setJobId(e.target.value)} placeholder="如 381639"
+                    required className="field font-mono" />
+                </div>
+              </div>
+            )}
+            {mode === 'register' && dept === '采购运营组' && (
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color:'var(--text)', opacity:0.75 }}>所在小组</label>
+                <select value={group} onChange={e => setGroup(e.target.value)} className="field">
+                  <option value="">请选择（可选）</option>
+                  <option>运营分析组</option>
+                  <option>采购稽核组</option>
+                  <option>供应商管理组</option>
+                </select>
+              </div>
+            )}
             <Field label="邮箱" type="email" value={email} onChange={setEmail} placeholder="your@company.com" />
             <div>
               <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text)', opacity: 0.75 }}>密码</label>

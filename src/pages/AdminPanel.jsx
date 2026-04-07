@@ -34,19 +34,25 @@ export default function AdminPanel() {
   }
 
   async function handleRoleChange(uid, role) {
-    setActionLoading(uid + role)
+    setActionLoading(uid + 'role')
     try {
       await updateUser(uid, { role })
       setUsers(prev => prev.map(u => u.uid === uid ? { ...u, role } : u))
-    } finally { setActionLoading(null) }
+    } catch(e) { alert('修改失败：' + e.message) }
+    finally { setActionLoading(null) }
   }
 
   async function handleProfileChange(uid, fields) {
     setActionLoading(uid + 'profile')
+    // 单选字段不能发空字符串给 Teable，过滤掉
+    const clean = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== ''))
     try {
-      await updateUser(uid, fields)
+      if (Object.keys(clean).length > 0) {
+        await updateUser(uid, clean)
+      }
       setUsers(prev => prev.map(u => u.uid === uid ? { ...u, ...fields } : u))
-    } finally { setActionLoading(null) }
+    } catch(e) { alert('修改失败：' + e.message) }
+    finally { setActionLoading(null) }
   }
 
   const [analytics, setAnalytics] = useState(null)
@@ -259,7 +265,8 @@ const GROUP_CFG2 = {
 function UserRow({ user: u, isSelf, actionLoading, onStatusChange, onRoleChange, onProfileChange }) {
   const sc = STATUS_CFG[u.status] ?? STATUS_CFG.pending
   const createdAt = u.createdAt ? new Date(u.createdAt).toLocaleDateString('zh-CN') : '—'
-  const busy = !!actionLoading
+  const busy = actionLoading === u.uid + 'role' || actionLoading === u.uid + 'profile' ||
+               actionLoading === u.uid + 'active' || actionLoading === u.uid + 'disabled'
 
   const deptCfg  = DEPT_CFG[u.dept]
   const groupCfg = GROUP_CFG2[u.group]

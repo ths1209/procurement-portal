@@ -50,20 +50,24 @@ export function AuthProvider({ children }) {
     return record
   }
 
-  async function register(email, password, displayName) {
+  async function register(email, password, displayName, extra = {}) {
     const existing = await findUserByEmail(email)
     if (existing) {
       throw new Error('EMAIL_EXISTS')
     }
     const passwordHash = await bcrypt.hash(password, 10)
-    await createUser({
+    const fields = {
       email,
       displayName,
       passwordHash,
       role:      'member',
       status:    'pending',
       createdAt: new Date().toISOString(),
-    })
+    }
+    if (extra.jobId) fields.jobId = extra.jobId
+    if (extra.dept)  fields.dept  = extra.dept
+    if (extra.group) fields.group = extra.group
+    await createUser(fields)
     // 注册成功，不自动登录，等待管理员审批
   }
 

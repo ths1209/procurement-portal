@@ -64,6 +64,34 @@ export function isGroupPurchase(profile) {
   return profile?.role !== 'admin' && profile?.dept === '集团采购部'
 }
 
+/** 确保用户表存在 dept / group / jobId 字段，不存在则自动创建 */
+const USER_EXTRA_FIELDS = [
+  { name: 'dept',  type: 'singleSelect', options: { choices: [
+    { name: '采购运营组' }, { name: '集团采购部' },
+  ]}},
+  { name: 'group', type: 'singleSelect', options: { choices: [
+    { name: '运营分析组' }, { name: '采购稽核组' }, { name: '供应商管理组' },
+  ]}},
+  { name: 'jobId', type: 'singleLineText' },
+]
+
+export async function ensureUserFields() {
+  try {
+    const existing = await request(`/table/${TID}/field`)
+    const names = new Set(existing.map(f => f.name))
+    for (const def of USER_EXTRA_FIELDS) {
+      if (!names.has(def.name)) {
+        await request(`/table/${TID}/field`, {
+          method: 'POST',
+          body: JSON.stringify(def),
+        }).catch(e => console.warn(`[Teable] 创建字段 "${def.name}" 失败:`, e.message))
+      }
+    }
+  } catch(e) {
+    console.warn('[Teable] ensureUserFields 失败:', e.message)
+  }
+}
+
 /** 获取所有用户（小团队全量加载后客户端过滤） */
 export async function listUsers() {
   const data = await request(`/table/${TID}/record?take=500`)

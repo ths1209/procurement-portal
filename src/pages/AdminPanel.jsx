@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { RefreshCw, UserCheck, UserX, ShieldCheck, Users, BarChart2, Eye, MousePointer } from 'lucide-react'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
-import { listUsers, updateUser } from '../lib/teable'
+import { listUsers, updateUser, ensureUserFields } from '../lib/teable'
 import { useAuth } from '../contexts/AuthContext'
 import { loadAnalytics } from '../lib/teableAnalytics'
 
@@ -22,7 +22,10 @@ export default function AdminPanel() {
 
   async function fetchUsers() {
     setLoading(true)
-    try { setUsers(await listUsers()) } finally { setLoading(false) }
+    try {
+      await ensureUserFields()
+      setUsers(await listUsers())
+    } finally { setLoading(false) }
   }
 
   async function handleStatusChange(uid, status) {

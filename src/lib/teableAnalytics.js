@@ -45,11 +45,10 @@ export async function trackVisit({ userId, displayName, page }) {
 
   if (TID) {
     // Teable 模式：写入一条记录
-    req(`/table/${TID}/record`, {
+    req(`/table/${TID}/record?fieldKeyType=name`, {
       method: 'POST',
       body: JSON.stringify({
         records: [{ fields: { 用户ID: userId, 姓名: displayName, 页面: pageName, 日期: date, 访问时间: visitedAt } }],
-        fieldKeyType: 'name',
       }),
     }).catch(() => {}) // 静默失败，不影响主流程
     return

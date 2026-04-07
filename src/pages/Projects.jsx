@@ -214,8 +214,8 @@ export default function Projects() {
         </div>
       )}
 
-      {/* 甘特图概览 */}
-      {!loading && rows.length > 0 && (
+      {/* 甘特图概览：仅显示当前可见范围内的项目 */}
+      {!loading && shown.length > 0 && (
         <div className="card overflow-hidden">
           <button className="w-full flex items-center justify-between px-4 py-3 text-left"
             onClick={() => setShowGantt(v => !v)}
@@ -224,7 +224,7 @@ export default function Projects() {
             <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${showGantt?'rotate-90':''}`}
               style={{ color:'var(--muted)' }} />
           </button>
-          {showGantt && <GanttChart rows={rows} orgFilter={orgFilter} setOrgFilter={setOrgFilter} />}
+          {showGantt && <GanttChart rows={shown} orgFilter={orgFilter} setOrgFilter={setOrgFilter} />}
         </div>
       )}
 
@@ -323,7 +323,7 @@ export default function Projects() {
       )}
 
       {/* 月报弹窗 */}
-      {reportOpen && <MonthlyReport rows={rows} onClose={() => setReportOpen(false)} />}
+      {reportOpen && <MonthlyReport rows={shown} onClose={() => setReportOpen(false)} />}
 
       {/* 新建/编辑弹窗 */}
       {formRow !== null && (
@@ -997,9 +997,9 @@ function MonthlyReport({ rows, onClose }) {
     }
   }
 
-  // 按计划完成时间筛选本月项目
+  // 按发布时间筛选本月项目
   const monthRows = useMemo(() => rows.filter(r => {
-    const d = r.planDate || r.startDate
+    const d = r.startDate
     if (!d) return false
     const pd = new Date(d)
     return pd.getFullYear() === year && pd.getMonth() + 1 === month

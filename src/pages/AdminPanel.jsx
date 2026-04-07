@@ -41,6 +41,14 @@ export default function AdminPanel() {
     } finally { setActionLoading(null) }
   }
 
+  async function handleProfileChange(uid, fields) {
+    setActionLoading(uid + 'profile')
+    try {
+      await updateUser(uid, fields)
+      setUsers(prev => prev.map(u => u.uid === uid ? { ...u, ...fields } : u))
+    } finally { setActionLoading(null) }
+  }
+
   const [analytics, setAnalytics] = useState(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(true)
 
@@ -112,8 +120,8 @@ export default function AdminPanel() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom:'1px solid var(--border)', background:'var(--surface2)' }}>
-                  {['姓名 / 邮箱','状态','角色','注册时间','操作'].map((h,i) => (
-                    <th key={h} className={`px-5 py-3 text-left text-[11px] font-semibold tracking-wide ${i===4?'text-right':''}`}
+                  {['姓名 / 邮箱','部门','小组','工号','状态','角色','注册时间','操作'].map((h,i) => (
+                    <th key={h} className={`px-4 py-3 text-left text-[11px] font-semibold tracking-wide ${i===7?'text-right':''}`}
                       style={{ color:'var(--muted)' }}>{h}</th>
                   ))}
                 </tr>
@@ -124,7 +132,8 @@ export default function AdminPanel() {
                     isSelf={u.uid === user?.uid || u.email === user?.email}
                     actionLoading={actionLoading}
                     onStatusChange={handleStatusChange}
-                    onRoleChange={handleRoleChange} />
+                    onRoleChange={handleRoleChange}
+                    onProfileChange={handleProfileChange} />
                 ))}
               </tbody>
             </table>
@@ -235,15 +244,33 @@ function AnalyticsSection({ data, loading }) {
   )
 }
 
-function UserRow({ user: u, isSelf, actionLoading, onStatusChange, onRoleChange }) {
+const DEPT_OPTS  = ['', '采购运营组', '集团采购部']
+const GROUP_OPTS = ['', '运营分析组', '采购稽核组', '供应商管理组']
+const DEPT_CFG = {
+  '采购运营组': { bg:'rgba(99,102,241,0.1)',  color:'#6366F1' },
+  '集团采购部': { bg:'rgba(14,165,233,0.1)',  color:'#0284C7' },
+}
+const GROUP_CFG2 = {
+  '运营分析组':  { bg:'rgba(16,185,129,0.1)', color:'#059669' },
+  '采购稽核组':  { bg:'rgba(245,158,11,0.1)', color:'#B45309' },
+  '供应商管理组':{ bg:'rgba(139,92,246,0.1)', color:'#7C3AED' },
+}
+
+function UserRow({ user: u, isSelf, actionLoading, onStatusChange, onRoleChange, onProfileChange }) {
   const sc = STATUS_CFG[u.status] ?? STATUS_CFG.pending
   const createdAt = u.createdAt ? new Date(u.createdAt).toLocaleDateString('zh-CN') : '—'
+  const busy = !!actionLoading
+
+  const deptCfg  = DEPT_CFG[u.dept]
+  const groupCfg = GROUP_CFG2[u.group]
 
   return (
     <tr className="transition-colors"
       onMouseEnter={e => e.currentTarget.style.background='var(--surface2)'}
       onMouseLeave={e => e.currentTarget.style.background='transparent'}>
-      <td className="px-5 py-3.5">
+
+      {/* 姓名/邮箱 */}
+      <td className="px-4 py-3.5">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold text-white shrink-0"
             style={{ background:'linear-gradient(135deg,#6366F1,#0EA5E9)' }}>
@@ -255,30 +282,78 @@ function UserRow({ user: u, isSelf, actionLoading, onStatusChange, onRoleChange 
           </div>
         </div>
       </td>
-      <td className="px-5 py-3.5">
+
+      {/* 部门 */}
+      <td className="px-4 py-3.5">
+        {isSelf ? (
+          deptCfg
+            ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background:deptCfg.bg, color:deptCfg.color }}>{u.dept}</span>
+            : <span style={{ color:'var(--muted)', opacity:0.4 }}>—</span>
+        ) : (
+          <select value={u.dept||''} onChange={e => onProfileChange(u.uid, { dept: e.target.value, group: '' })}
+            disabled={busy} className="field text-xs py-1.5 px-2" style={{ width:'auto', minWidth:90 }}>
+            {DEPT_OPTS.map(o => <option key={o} value={o}>{o || '未设置'}</option>)}
+          </select>
+        )}
+      </td>
+
+      {/* 小组（仅采购运营组） */}
+      <td className="px-4 py-3.5">
+        {u.dept !== '采购运营组' ? (
+          <span style={{ color:'var(--muted)', opacity:0.3 }}>—</span>
+        ) : isSelf ? (
+          groupCfg
+            ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background:groupCfg.bg, color:groupCfg.color }}>{u.group}</span>
+            : <span style={{ color:'var(--muted)', opacity:0.4 }}>—</span>
+        ) : (
+          <select value={u.group||''} onChange={e => onProfileChange(u.uid, { group: e.target.value })}
+            disabled={busy} className="field text-xs py-1.5 px-2" style={{ width:'auto', minWidth:100 }}>
+            {GROUP_OPTS.map(o => <option key={o} value={o}>{o || '未设置'}</option>)}
+          </select>
+        )}
+      </td>
+
+      {/* 工号 */}
+      <td className="px-4 py-3.5">
+        {isSelf ? (
+          <span className="text-[12px] font-mono" style={{ color:'var(--text)' }}>{u.jobId || '—'}</span>
+        ) : (
+          <input defaultValue={u.jobId||''} disabled={busy}
+            onBlur={e => { const v = e.target.value.trim(); if (v !== (u.jobId||'')) onProfileChange(u.uid, { jobId: v }) }}
+            placeholder="工号" className="field text-xs py-1.5 px-2 font-mono" style={{ width:80 }} />
+        )}
+      </td>
+
+      {/* 状态 */}
+      <td className="px-4 py-3.5">
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap"
           style={{ background:sc.bg, color:sc.color }}>
           <span className="w-1.5 h-1.5 rounded-full" style={{ background:sc.dot }} />
           {sc.label}
         </span>
       </td>
-      <td className="px-5 py-3.5">
+
+      {/* 角色 */}
+      <td className="px-4 py-3.5">
         {isSelf ? (
           <span className="text-[11px] font-bold px-2 py-0.5 rounded-md"
             style={{ background:'rgba(99,102,241,0.1)', color:'#6366F1' }}>管理员（当前）</span>
         ) : (
           <select value={u.role||'member'} onChange={e => onRoleChange(u.uid, e.target.value)}
-            disabled={!!actionLoading}
-            className="field text-xs py-1.5 px-2.5" style={{ width:'auto' }}>
+            disabled={busy} className="field text-xs py-1.5 px-2.5" style={{ width:'auto' }}>
             <option value="member">普通成员</option>
             <option value="admin">管理员</option>
           </select>
         )}
       </td>
-      <td className="px-5 py-3.5">
+
+      {/* 注册时间 */}
+      <td className="px-4 py-3.5">
         <span className="text-xs font-mono" style={{ color:'var(--muted)' }}>{createdAt}</span>
       </td>
-      <td className="px-5 py-3.5 text-right">
+
+      {/* 操作 */}
+      <td className="px-4 py-3.5 text-right">
         {!isSelf && (
           <div className="flex items-center justify-end gap-1.5">
             {u.status !== 'active' && (

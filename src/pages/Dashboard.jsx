@@ -39,6 +39,10 @@ function useLocal(key, def) {
 export default function Dashboard() {
   const { profile } = useAuth()
   const isAdmin = profile?.role === 'admin'
+  // 集团采购部成员只能看采购部通用分组
+  const visibleGroups = (profile?.role !== 'admin' && profile?.dept === '集团采购部')
+    ? ['采购部通用']
+    : GROUPS
   // localStorage 仅在 Teable 未配置时作为本地回退
   const ai   = useLocal('pp_ai',   DEFAULT_AI)
   const dash = useLocal('pp_dash', DEFAULT_DASH)
@@ -112,7 +116,7 @@ export default function Dashboard() {
         title="百宝箱" sub="团队工具一站直达，按组快速查找"
         icon={<Package className="w-4 h-4" />} iconBg="rgba(99,102,241,0.12)" iconClr="#6366F1">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {GROUPS.map(group => (
+          {visibleGroups.map(group => (
             <GroupPanel key={group} group={group}
               urlTools={urlTools.filter(t => (t.group ?? '采购部通用') === group)}
               fileTools={fileTools.filter(t => t.group === group)}

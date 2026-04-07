@@ -8,11 +8,11 @@ import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 
 const NAV = [
-  { to: '/dashboard',  label: '百宝箱',     icon: LayoutDashboard },
-  { to: '/projects',   label: '项目进度',   icon: ClipboardList   },
+  { to: '/dashboard',  label: '百宝箱',      icon: LayoutDashboard },
+  { to: '/projects',   label: '项目进度',    icon: ClipboardList   },
   { to: '/reviews',    label: '百万项目评审', icon: Medal           },
-  { to: '/consulting', label: '咨询赋能台账', icon: BookOpen        },
-  { to: '/admin',      label: '用户管理',   icon: Users, admin: true },
+  { to: '/consulting', label: '咨询赋能台账', icon: BookOpen, opsOnly: true },
+  { to: '/admin',      label: '用户管理',    icon: Users, admin: true },
 ]
 
 export default function Layout({ children }) {
@@ -23,6 +23,7 @@ export default function Layout({ children }) {
   const [open, setOpen] = useState(false)
   const [pwOpen, setPwOpen] = useState(false)
   const isAdmin   = profile?.role === 'admin'
+  const isOps     = isAdmin || profile?.dept === '采购运营组'
 
   function handleLogout() { logout(); navigate('/login', { replace: true }) }
 
@@ -32,7 +33,7 @@ export default function Layout({ children }) {
     trackVisit({ userId: profile.email, displayName: profile.displayName || profile.email, page: location.pathname })
   }, [location.pathname, profile?.email])
 
-  const links = NAV.filter(n => !n.admin || isAdmin)
+  const links = NAV.filter(n => (!n.admin || isAdmin) && (!n.opsOnly || isOps))
 
   /* ── 侧边栏内容 ── */
   const Sidebar = () => (
@@ -84,7 +85,10 @@ export default function Layout({ children }) {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--sb-text-strong)' }}>{profile?.displayName || '用户'}</p>
-            <p className="text-[10px] truncate" style={{ color: 'var(--sb-muted)' }}>{profile?.email}</p>
+            <p className="text-[10px] truncate" style={{ color: 'var(--sb-muted)' }}>
+              {profile?.group || profile?.dept || profile?.email}
+              {profile?.jobId ? ` · ${profile.jobId}` : ''}
+            </p>
           </div>
           {isAdmin && (
             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md tracking-wide shrink-0"

@@ -42,7 +42,7 @@ function AnimatedRoutes() {
         <ProtectedRoute><Layout><Reviews /></Layout></ProtectedRoute>
       } />
       <Route path="/consulting" element={
-        <ProtectedRoute><Layout><Consulting /></Layout></ProtectedRoute>
+        <ProtectedRoute requireOps><Layout><Consulting /></Layout></ProtectedRoute>
       } />
       <Route path="/admin" element={
         <ProtectedRoute requireAdmin><Layout><AdminPanel /></Layout></ProtectedRoute>

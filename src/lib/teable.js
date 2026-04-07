@@ -2,16 +2,19 @@
  * Teable REST API 客户端
  *
  * 用户表所需字段（在 Teable 中手动创建）：
- * ┌─────────────┬──────────────┬────────────────────────────┐
- * │ 字段名       │ 类型         │ 备注                        │
- * ├─────────────┼──────────────┼────────────────────────────┤
- * │ email       │ 单行文本     │                             │
- * │ displayName │ 单行文本     │                             │
- * │ passwordHash│ 长文本       │ bcrypt 哈希，不是明文密码    │
- * │ role        │ 单选         │ 选项：admin / member        │
- * │ status      │ 单选         │ 选项：pending / active / disabled │
- * │ createdAt   │ 日期         │ 或用单行文本存 ISO 字符串   │
- * └─────────────┴──────────────┴────────────────────────────┘
+ * ┌─────────────┬──────────────┬────────────────────────────────────────────────────┐
+ * │ 字段名       │ 类型         │ 备注                                               │
+ * ├─────────────┼──────────────┼────────────────────────────────────────────────────┤
+ * │ email       │ 单行文本     │                                                    │
+ * │ displayName │ 单行文本     │                                                    │
+ * │ passwordHash│ 长文本       │ bcrypt 哈希，不是明文密码                          │
+ * │ role        │ 单选         │ 选项：admin / member                               │
+ * │ dept        │ 单选         │ 选项：采购运营组 / 集团采购部                      │
+ * │ group       │ 单选         │ 选项：运营分析组 / 采购稽核组 / 供应商管理组       │
+ * │ jobId       │ 单行文本     │ 工号，用于权限匹配                                 │
+ * │ status      │ 单选         │ 选项：pending / active / disabled                  │
+ * │ createdAt   │ 日期         │ 或用单行文本存 ISO 字符串                          │
+ * └─────────────┴──────────────┴────────────────────────────────────────────────────┘
  */
 
 const API   = (import.meta.env.VITE_TEABLE_API_BASE ?? 'https://app.teable.io').replace(/\/$/, '')
@@ -34,9 +37,31 @@ async function request(path, init = {}) {
   return res.json()
 }
 
-/** 将 Teable record 对象扁平化 */
+/** 将 Teable record 对象扁平化，补全权限字段默认值 */
 function normalize(record) {
-  return { uid: record.id, ...record.fields }
+  const f = record.fields ?? {}
+  return {
+    uid:          record.id,
+    email:        f.email        ?? '',
+    displayName:  f.displayName  ?? '',
+    passwordHash: f.passwordHash ?? '',
+    role:         f.role         ?? 'member',
+    dept:         f.dept         ?? '',      // '采购运营组' | '集团采购部'
+    group:        f.group        ?? '',      // '运营分析组' | '采购稽核组' | '供应商管理组'
+    jobId:        f.jobId        ?? '',      // 工号
+    status:       f.status       ?? 'pending',
+    createdAt:    f.createdAt    ?? '',
+  }
+}
+
+/** 权限辅助：判断是否属于采购运营组 */
+export function isOpsGroup(profile) {
+  return profile?.role === 'admin' || profile?.dept === '采购运营组'
+}
+
+/** 权限辅助：判断是否属于集团采购部（非运营组普通成员） */
+export function isGroupPurchase(profile) {
+  return profile?.role !== 'admin' && profile?.dept === '集团采购部'
 }
 
 /** 获取所有用户（小团队全量加载后客户端过滤） */

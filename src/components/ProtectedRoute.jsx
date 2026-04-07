@@ -1,7 +1,7 @@
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
-export default function ProtectedRoute({ children, requireAdmin = false }) {
+export default function ProtectedRoute({ children, requireAdmin = false, requireOps = false }) {
   const { user, profile, loading, logout } = useAuth()
 
   if (loading) {
@@ -56,6 +56,11 @@ export default function ProtectedRoute({ children, requireAdmin = false }) {
   }
 
   if (requireAdmin && profile?.role !== 'admin') {
+    return <Navigate to="/dashboard" replace />
+  }
+
+  // 咨询赋能台账：仅管理员或采购运营组成员可访问
+  if (requireOps && profile?.role !== 'admin' && profile?.dept !== '采购运营组') {
     return <Navigate to="/dashboard" replace />
   }
 

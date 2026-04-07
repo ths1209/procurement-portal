@@ -129,13 +129,21 @@ export default function Projects() {
   }
 
   const shown = useMemo(() => {
-    const filtered = rows.filter(r =>
-      (filter === '全部' || r.status === filter) &&
-      (orgFilter === '全部' || r.org === orgFilter) &&
-      (!search || r.task?.includes(search) || r.owner?.includes(search) || r.id?.includes(search) || r.ownerJobId?.includes(search))
-    )
+    const myJobId = profile?.jobId?.trim()
+    const filtered = rows.filter(r => {
+      // 普通成员：只看工号出现在 ownerJobId 中的项目
+      if (!isAdmin && myJobId) {
+        const ids = (r.ownerJobId || '').split(/[,，\s]+/).map(s => s.trim())
+        if (!ids.includes(myJobId)) return false
+      }
+      return (
+        (filter === '全部' || r.status === filter) &&
+        (orgFilter === '全部' || r.org === orgFilter) &&
+        (!search || r.task?.includes(search) || r.owner?.includes(search) || r.id?.includes(search) || r.ownerJobId?.includes(search))
+      )
+    })
     return filtered.slice().sort((a, b) => parseProjectId(a.id) - parseProjectId(b.id))
-  }, [rows, search, filter, orgFilter])
+  }, [rows, search, filter, orgFilter, isAdmin, profile?.jobId])
 
   const counts = useMemo(() => {
     const base = orgFilter === '全部' ? rows : rows.filter(r => r.org === orgFilter)

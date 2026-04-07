@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { Plus, ExternalLink, Eye, X, BarChart3, Package, Download, Upload } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -48,8 +48,24 @@ export default function Dashboard() {
   const ai   = useLocal('pp_ai',   DEFAULT_AI)
   const dash = useLocal('pp_dash', DEFAULT_DASH)
   const [teableData, setTeableData] = useState({ fileTools:[], urlTools:[], dashItems:[], pending:[] })
-  const [addGroup,  setAddGroup]  = useState(null)
-  const [approving, setApproving] = useState(null)
+  const [addGroup,    setAddGroup]    = useState(null)
+  const [approving,   setApproving]   = useState(null)
+  const [activeGroup, setActiveGroup] = useState(null)   // Tab 当前分组
+  const [prevGroup,   setPrevGroup]   = useState(null)   // 上一个分组（用于动画方向）
+  const [animDir,     setAnimDir]     = useState(1)      // 1=向右滑入 -1=向左滑入
+  const [animKey,     setAnimKey]     = useState(0)      // 强制重新触发动画
+
+  // 初始化默认 Tab
+  const currentGroup = activeGroup ?? visibleGroups[0]
+
+  function switchTab(group) {
+    if (group === currentGroup) return
+    const oldIdx = visibleGroups.indexOf(currentGroup)
+    const newIdx = visibleGroups.indexOf(group)
+    setAnimDir(newIdx > oldIdx ? 1 : -1)
+    setActiveGroup(group)
+    setAnimKey(k => k + 1)
+  }
 
   const configured = isToolsConfigured()
   const fileTools = configured ? teableData.fileTools : []
@@ -157,19 +173,59 @@ export default function Dashboard() {
       <Section
         title="百宝箱" sub="团队工具一站直达，按组快速查找"
         icon={<Package className="w-4 h-4" />} iconBg="rgba(99,102,241,0.12)" iconClr="#6366F1">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {visibleGroups.map(group => (
-            <GroupPanel key={group} group={group}
-              urlTools={urlTools.filter(t => (t.group ?? '采购部通用') === group)}
-              fileTools={fileTools.filter(t => t.group === group)}
+
+        {/* Tab 栏 */}
+        <div className="relative flex gap-1 p-1 rounded-2xl overflow-x-auto"
+          style={{ background:'var(--surface)', border:'1px solid var(--border)' }}>
+          {visibleGroups.map(group => {
+            const cfg = GROUP_CFG[group] ?? { color:'#64748B' }
+            const active = group === currentGroup
+            return (
+              <button key={group} onClick={() => switchTab(group)}
+                className="press relative flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-semibold whitespace-nowrap transition-all duration-200 shrink-0"
+                style={active
+                  ? { background: cfg.color, color: '#fff', boxShadow: `0 2px 12px ${cfg.color}50` }
+                  : { color: 'var(--muted)' }
+                }>
+                <span className="text-base leading-none">{GROUP_CFG[group]?.emoji ?? '📁'}</span>
+                {group}
+                {/* 工具数量角标 */}
+                {(() => {
+                  const n = urlTools.filter(t => (t.group ?? '采购部通用') === group).length
+                           + fileTools.filter(t => t.group === group).length
+                  return n > 0
+                    ? <span className="ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold"
+                        style={{ background: active ? 'rgba(255,255,255,0.25)' : `${cfg.color}18`, color: active ? '#fff' : cfg.color }}>
+                        {n}
+                      </span>
+                    : null
+                })()}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* 面板内容（带滑动动画） */}
+        <div className="overflow-hidden rounded-2xl" style={{ border:'1px solid var(--border)' }}>
+          <style>{`
+            @keyframes slideInRight { from { opacity:0; transform:translateX(32px) } to { opacity:1; transform:translateX(0) } }
+            @keyframes slideInLeft  { from { opacity:0; transform:translateX(-32px) } to { opacity:1; transform:translateX(0) } }
+            .tab-slide-right { animation: slideInRight 0.22s cubic-bezier(.25,.8,.25,1) both }
+            .tab-slide-left  { animation: slideInLeft  0.22s cubic-bezier(.25,.8,.25,1) both }
+          `}</style>
+          <div key={animKey} className={animDir >= 0 ? 'tab-slide-right' : 'tab-slide-left'}>
+            <GroupPanel
+              group={currentGroup}
+              urlTools={urlTools.filter(t => (t.group ?? '采购部通用') === currentGroup)}
+              fileTools={fileTools.filter(t => t.group === currentGroup)}
               isAdmin={isAdmin}
               nameMap={{ [profile?.email]: profile?.displayName }}
-              onAdd={() => setAddGroup(group)}
+              onAdd={() => setAddGroup(currentGroup)}
               onDelUrl={id => configured ? handleDelTool(id) : ai.del(id)}
               onDelFile={handleDelTool}
               onDownload={handleDownload}
             />
-          ))}
+          </div>
         </div>
       </Section>
 
@@ -256,19 +312,12 @@ function GroupPanel({ group, urlTools, fileTools, isAdmin, onAdd, onDelUrl, onDe
   const resolveName = v => (v && nameMap[v]) ? nameMap[v] : v
 
   return (
-    <div className="overflow-hidden rounded-2xl transition-shadow duration-200"
-      style={{
-        background: `linear-gradient(160deg, ${cfg.color}04 0%, var(--surface) 45%)`,
-        border: `1px solid ${cfg.color}1a`,
-        boxShadow: `0 2px 8px rgba(0,0,0,0.07), 0 0 0 0 ${cfg.color}00`,
-      }}
-      onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 6px 20px rgba(0,0,0,0.1), 0 0 0 1px ${cfg.color}20` }}
-      onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 2px 8px rgba(0,0,0,0.07), 0 0 0 0 ${cfg.color}00` }}>
-      {/* 分组头 */}
-      <div className="flex items-center justify-between px-3.5 py-2.5"
+    <div style={{ background: `linear-gradient(160deg, ${cfg.color}04 0%, var(--surface) 45%)` }}>
+      {/* 分组头（Tab 模式下作为内容区标题栏） */}
+      <div className="flex items-center justify-between px-4 py-3"
         style={{
-          borderBottom: `1px solid ${cfg.color}10`,
-          background: `linear-gradient(135deg, ${cfg.color}09, ${cfg.color}04)`,
+          borderBottom: `1px solid ${cfg.color}15`,
+          background: `linear-gradient(135deg, ${cfg.color}08, ${cfg.color}03)`,
         }}>
         <div className="flex items-center gap-2">
           <div className="w-6 h-6 rounded-lg flex items-center justify-center text-sm select-none shrink-0"

@@ -3,13 +3,14 @@ import talLogo from '../assets/tal-logo.png'
 import { trackVisit } from '../lib/teableAnalytics'
 import { createPortal } from 'react-dom'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { LayoutDashboard, ClipboardList, Medal, BookOpen, Users, LogOut, Menu, X, Sun, Moon, KeyRound } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, Medal, BookOpen, Users, LogOut, Menu, X, Sun, Moon, KeyRound, Sparkles } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 
 const NAV = [
   { to: '/dashboard',  label: '百宝箱',      icon: LayoutDashboard },
-  { to: '/projects',   label: '项目进度',    icon: ClipboardList   },
+  { to: '/ai-wishes',  label: 'AI 需求池',   icon: Sparkles        },
+  { to: '/projects',   label: '项目进度',    icon: ClipboardList, hideGroupPurchase: true },
   { to: '/reviews',    label: '百万项目评审', icon: Medal           },
   { to: '/consulting', label: '咨询赋能台账', icon: BookOpen, opsOnly: true },
   { to: '/admin',      label: '用户管理',    icon: Users, admin: true },
@@ -33,7 +34,12 @@ export default function Layout({ children }) {
     trackVisit({ userId: profile.email, displayName: profile.displayName || profile.email, page: location.pathname })
   }, [location.pathname, profile?.email])
 
-  const links = NAV.filter(n => (!n.admin || isAdmin) && (!n.opsOnly || isOps))
+  const isGroupPurchase = !isAdmin && profile?.dept === '集团采购部'
+  const links = NAV.filter(n =>
+    (!n.admin || isAdmin) &&
+    (!n.opsOnly || isOps) &&
+    (!n.hideGroupPurchase || !isGroupPurchase)
+  )
 
   /* ── 侧边栏内容 ── */
   const Sidebar = () => (

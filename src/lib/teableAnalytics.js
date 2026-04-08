@@ -12,6 +12,7 @@ const LS_KEY = 'pp_analytics'
 
 export const PAGE_NAMES = {
   '/dashboard':  '百宝箱',
+  '/ai-wishes':  'AI需求池',
   '/projects':   '项目进度',
   '/reviews':    '百万项目评审',
   '/consulting': '咨询赋能台账',

@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard'
 import Projects from './pages/Projects'
 import Reviews from './pages/Reviews'
 import Consulting from './pages/Consulting'
+import AIWishPool from './pages/AIWishPool'
 import AdminPanel from './pages/AdminPanel'
 
 function AnimatedRoutes() {
@@ -34,6 +35,9 @@ function AnimatedRoutes() {
 
       <Route path="/dashboard" element={
         <ProtectedRoute><Layout><Dashboard /></Layout></ProtectedRoute>
+      } />
+      <Route path="/ai-wishes" element={
+        <ProtectedRoute><Layout><AIWishPool /></Layout></ProtectedRoute>
       } />
       <Route path="/projects" element={
         <ProtectedRoute><Layout><Projects /></Layout></ProtectedRoute>

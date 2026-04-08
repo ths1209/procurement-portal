@@ -128,29 +128,33 @@ export default function Projects() {
     } catch(e) { alert('操作失败：'+e.message) }
   }
 
-  const shown = useMemo(() => {
+  // 应用权限 + orgFilter + search，但不含 status 过滤
+  // counts 和 shown 共用同一基础数据集，确保计数与显示行数一致
+  const baseFiltered = useMemo(() => {
     const myJobId = profile?.jobId?.trim()
-    const filtered = rows.filter(r => {
-      // 普通成员：只看工号出现在 ownerJobId 中的项目
+    return rows.filter(r => {
       if (!isAdmin && myJobId) {
         const ids = (r.ownerJobId || '').split(/[,，\s]+/).map(s => s.trim())
         if (!ids.includes(myJobId)) return false
       }
       return (
-        (filter === '全部' || r.status === filter) &&
         (orgFilter === '全部' || r.org === orgFilter) &&
         (!search || r.task?.includes(search) || r.owner?.includes(search) || r.id?.includes(search) || r.ownerJobId?.includes(search))
       )
     })
-    return filtered.slice().sort((a, b) => parseProjectId(a.id) - parseProjectId(b.id))
-  }, [rows, search, filter, orgFilter, isAdmin, profile?.jobId])
+  }, [rows, search, orgFilter, isAdmin, profile?.jobId])
+
+  const shown = useMemo(() => {
+    return baseFiltered
+      .filter(r => filter === '全部' || r.status === filter)
+      .slice().sort((a, b) => parseProjectId(a.id) - parseProjectId(b.id))
+  }, [baseFiltered, filter])
 
   const counts = useMemo(() => {
-    const base = orgFilter === '全部' ? rows : rows.filter(r => r.org === orgFilter)
-    const c = { '全部': base.length }
-    Object.keys(STATUS_CFG).forEach(s => { c[s] = base.filter(r => r.status === s).length })
+    const c = { '全部': baseFiltered.length }
+    Object.keys(STATUS_CFG).forEach(s => { c[s] = baseFiltered.filter(r => r.status === s).length })
     return c
-  }, [rows, orgFilter])
+  }, [baseFiltered])
 
   if (!isConfigured()) return (
     <div className="max-w-lg space-y-4 animate-page-in">
@@ -224,7 +228,7 @@ export default function Projects() {
             <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${showGantt?'rotate-90':''}`}
               style={{ color:'var(--muted)' }} />
           </button>
-          {showGantt && <GanttChart rows={shown} orgFilter={orgFilter} setOrgFilter={setOrgFilter} />}
+          {showGantt && <GanttChart rows={baseFiltered} orgFilter={orgFilter} setOrgFilter={setOrgFilter} />}
         </div>
       )}
 

@@ -18,6 +18,7 @@ const FT = {
   status:      '审核状态',   // pending | approved | rejected
   follower:    '跟进人',
   followStatus:'跟进状态',   // 待跟进 | 跟进中 | 已完成
+  history:     '修改历史',
 }
 
 export const FOLLOW_STATUS_OPTS = ['待跟进', '跟进中', '已完成']
@@ -46,6 +47,7 @@ const FIELD_DEFS = [
       { name: '已完成', color: { name: 'greenLight2' } },
     ]},
   },
+  { name: FT.history, type: 'longText' },
 ]
 
 // ─── 工具函数 ─────────────────────────────────────────────────────────────────
@@ -78,7 +80,19 @@ function norm(r) {
     status:      f[FT.status]      ?? 'pending',
     follower:    f[FT.follower]    ?? '',
     followStatus:f[FT.followStatus]?? '待跟进',
+    history:     f[FT.history]     ?? '',
   }
+}
+
+function historyLine(byUser, action) {
+  const now = new Date()
+  const ts = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`
+  return `${ts} | ${byUser} | ${action}`
+}
+
+function appendHistory(current, byUser, action) {
+  const line = historyLine(byUser, action)
+  return current ? `${current}\n${line}` : line
 }
 
 // ─── 公开 API ─────────────────────────────────────────────────────────────────
@@ -108,6 +122,7 @@ export async function listAI() {
 
 export async function createAI({ scene, asis, tobe, roi }, submitter) {
   if (!TID) throw new Error('未配置 AI 需求池表')
+  const initHistory = historyLine(submitter, '提交需求')
   const fields = {
     [FT.scene]:       scene,
     [FT.asis]:        asis,
@@ -117,6 +132,7 @@ export async function createAI({ scene, asis, tobe, roi }, submitter) {
     [FT.submittedAt]: new Date().toISOString(),
     [FT.status]:      'pending',
     [FT.followStatus]:'待跟进',
+    [FT.history]:     initHistory,
   }
   return req(`/table/${TID}/record?fieldKeyType=name`, {
     method: 'POST',
@@ -124,19 +140,30 @@ export async function createAI({ scene, asis, tobe, roi }, submitter) {
   })
 }
 
-export async function approveAI(id, approved) {
+export async function approveAI(id, approved, byUser, currentHistory = '') {
   if (!TID) throw new Error('未配置 AI 需求池表')
+  const newStatus = approved ? 'approved' : 'rejected'
+  const action = approved ? '审批通过' : '审批拒绝'
+  const newHistory = appendHistory(currentHistory, byUser || '管理员', action)
   await req(`/table/${TID}/record?fieldKeyType=name`, {
     method: 'PATCH',
     body: JSON.stringify({
-      records: [{ id, fields: { [FT.status]: approved ? 'approved' : 'rejected' } }],
+      records: [{ id, fields: {
+        [FT.status]:  newStatus,
+        [FT.history]: newHistory,
+      }}],
     }),
   })
 }
 
-export async function followAI(id, follower, followStatus) {
+export async function followAI(id, follower, followStatus, byUser, currentHistory = '') {
   if (!TID) throw new Error('未配置 AI 需求池表')
-  const fields = { [FT.follower]: follower }
+  const action = `接手跟进，状态设为「${followStatus || '待跟进'}」`
+  const newHistory = appendHistory(currentHistory, byUser || follower, action)
+  const fields = {
+    [FT.follower]:    follower,
+    [FT.history]:     newHistory,
+  }
   if (followStatus) fields[FT.followStatus] = followStatus
   await req(`/table/${TID}/record?fieldKeyType=name`, {
     method: 'PATCH',
@@ -144,12 +171,19 @@ export async function followAI(id, follower, followStatus) {
   })
 }
 
-export async function updateFollowStatus(id, followStatus) {
+export async function updateFollowStatus(id, followStatus, byUser, currentHistory = '', prevStatus = '') {
   if (!TID) throw new Error('未配置 AI 需求池表')
+  const action = prevStatus
+    ? `跟进状态 ${prevStatus} → ${followStatus}`
+    : `跟进状态更新为「${followStatus}」`
+  const newHistory = appendHistory(currentHistory, byUser, action)
   await req(`/table/${TID}/record?fieldKeyType=name`, {
     method: 'PATCH',
     body: JSON.stringify({
-      records: [{ id, fields: { [FT.followStatus]: followStatus } }],
+      records: [{ id, fields: {
+        [FT.followStatus]: followStatus,
+        [FT.history]:      newHistory,
+      } }],
     }),
   })
 }

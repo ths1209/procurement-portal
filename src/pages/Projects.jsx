@@ -280,7 +280,11 @@ export default function Projects() {
                 <tr style={{ borderBottom:'1px solid var(--border)', background:'var(--surface2)' }}>
                   {['编号','工作任务','发布时间','计划完成','实际完成','当前进展','状态','审核','采购组织','责任人','交付成果','操作'].map((h,i)=>(
                     <th key={h} className={`px-3.5 py-3 text-left text-[11px] font-semibold tracking-wide whitespace-nowrap ${i===11?'text-right':''}`}
-                      style={{ color:'var(--muted)', minWidth:i===1?200:i===5?160:i===11?120:i===10?100:80 }}>
+                      style={{
+                        color:'var(--muted)',
+                        minWidth:i===1?200:i===5?160:i===11?120:i===10?100:90,
+                        ...(i===0 ? { position:'sticky', left:0, zIndex:2, background:'var(--surface2)' } : {}),
+                      }}>
                       {h}
                     </th>
                   ))}
@@ -650,7 +654,8 @@ function Row({ row, isAdmin, userEmail, userJobId, open, onToggle, onEdit, onRev
         onMouseEnter={e => { if(!open) e.currentTarget.style.background='var(--surface2)' }}
         onMouseLeave={e => { if(!open) e.currentTarget.style.background='transparent' }}
         onClick={onToggle}>
-        <td className="px-3.5 py-3">
+        <td className="px-3.5 py-3"
+          style={{ position:'sticky', left:0, zIndex:1, background: open ? 'rgba(99,102,241,0.04)' : 'var(--surface)' }}>
           <div className="flex items-center gap-1.5">
             <ChevronDown className={`w-3 h-3 shrink-0 transition-transform duration-200 ${open?'rotate-180':''}`} style={{ color:'var(--muted)', opacity:0.45 }} />
             <span className="font-mono text-xs" style={{ color:'var(--muted)' }}>{row.id||'—'}</span>

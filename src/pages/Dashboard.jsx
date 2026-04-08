@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Plus, ExternalLink, Eye, X, BarChart3, Package, Download, Upload } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -51,7 +51,6 @@ export default function Dashboard() {
   const [addGroup,    setAddGroup]    = useState(null)
   const [approving,   setApproving]   = useState(null)
   const [activeGroup, setActiveGroup] = useState(null)   // Tab 当前分组
-  const [prevGroup,   setPrevGroup]   = useState(null)   // 上一个分组（用于动画方向）
   const [animDir,     setAnimDir]     = useState(1)      // 1=向右滑入 -1=向左滑入
   const [animKey,     setAnimKey]     = useState(0)      // 强制重新触发动画
 
@@ -174,45 +173,37 @@ export default function Dashboard() {
         title="百宝箱" sub="团队工具一站直达，按组快速查找"
         icon={<Package className="w-4 h-4" />} iconBg="rgba(99,102,241,0.12)" iconClr="#6366F1">
 
-        {/* Tab 栏 */}
-        <div className="relative flex gap-1 p-1 rounded-2xl overflow-x-auto"
-          style={{ background:'var(--surface)', border:'1px solid var(--border)' }}>
-          {visibleGroups.map(group => {
-            const cfg = GROUP_CFG[group] ?? { color:'#64748B' }
-            const active = group === currentGroup
-            return (
-              <button key={group} onClick={() => switchTab(group)}
-                className="press relative flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-semibold whitespace-nowrap transition-all duration-200 shrink-0"
-                style={active
-                  ? { background: cfg.color, color: '#fff', boxShadow: `0 2px 12px ${cfg.color}50` }
-                  : { color: 'var(--muted)' }
-                }>
-                <span className="text-base leading-none">{GROUP_CFG[group]?.emoji ?? '📁'}</span>
-                {group}
-                {/* 工具数量角标 */}
-                {(() => {
-                  const n = urlTools.filter(t => (t.group ?? '采购部通用') === group).length
-                           + fileTools.filter(t => t.group === group).length
-                  return n > 0
-                    ? <span className="ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold"
-                        style={{ background: active ? 'rgba(255,255,255,0.25)' : `${cfg.color}18`, color: active ? '#fff' : cfg.color }}>
-                        {n}
-                      </span>
-                    : null
-                })()}
-              </button>
-            )
-          })}
-        </div>
+        {/* Tab bar + 内容：单张卡片，消除双重边框 */}
+        <div className="card overflow-hidden">
+          {/* Tab 栏 */}
+          <div className="flex gap-1 px-2.5 py-2 overflow-x-auto"
+            style={{ borderBottom:'1px solid var(--border)', background:'var(--surface2)' }}>
+            {visibleGroups.map(group => {
+              const cfg = GROUP_CFG[group] ?? { color:'#64748B' }
+              const active = group === currentGroup
+              const n = urlTools.filter(t => (t.group ?? '采购部通用') === group).length
+                      + fileTools.filter(t => t.group === group).length
+              return (
+                <button key={group} onClick={() => switchTab(group)}
+                  className="press flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-semibold whitespace-nowrap transition-all duration-200 shrink-0"
+                  style={active
+                    ? { background: cfg.color, color:'#fff', boxShadow:`0 2px 8px ${cfg.color}40` }
+                    : { color:'var(--muted)' }
+                  }>
+                  <span className="text-sm leading-none">{cfg.emoji ?? '📁'}</span>
+                  {group}
+                  {n > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold"
+                      style={{ background: active ? 'rgba(0,0,0,0.18)' : `${cfg.color}15`, color: active ? '#fff' : cfg.color }}>
+                      {n}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
 
-        {/* 面板内容（带滑动动画） */}
-        <div className="overflow-hidden rounded-2xl" style={{ border:'1px solid var(--border)' }}>
-          <style>{`
-            @keyframes slideInRight { from { opacity:0; transform:translateX(32px) } to { opacity:1; transform:translateX(0) } }
-            @keyframes slideInLeft  { from { opacity:0; transform:translateX(-32px) } to { opacity:1; transform:translateX(0) } }
-            .tab-slide-right { animation: slideInRight 0.22s cubic-bezier(.25,.8,.25,1) both }
-            .tab-slide-left  { animation: slideInLeft  0.22s cubic-bezier(.25,.8,.25,1) both }
-          `}</style>
+          {/* 面板内容（滑动动画由 index.css 提供） */}
           <div key={animKey} className={animDir >= 0 ? 'tab-slide-right' : 'tab-slide-left'}>
             <GroupPanel
               group={currentGroup}
@@ -312,27 +303,16 @@ function GroupPanel({ group, urlTools, fileTools, isAdmin, onAdd, onDelUrl, onDe
   const resolveName = v => (v && nameMap[v]) ? nameMap[v] : v
 
   return (
-    <div style={{ background: `linear-gradient(160deg, ${cfg.color}04 0%, var(--surface) 45%)` }}>
-      {/* 分组头（Tab 模式下作为内容区标题栏） */}
-      <div className="flex items-center justify-between px-4 py-3"
-        style={{
-          borderBottom: `1px solid ${cfg.color}15`,
-          background: `linear-gradient(135deg, ${cfg.color}08, ${cfg.color}03)`,
-        }}>
-        <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-lg flex items-center justify-center text-sm select-none shrink-0"
-            style={{ background:`${cfg.color}14` }}>
-            {cfg.emoji}
-          </div>
-          <span className="font-semibold text-[13px]" style={{ color:cfg.color }}>{group}</span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold tabular-nums"
-            style={{ background:`${cfg.color}12`, color:cfg.color }}>
-            {total}
-          </span>
-        </div>
+    <div style={{ background:`linear-gradient(160deg, ${cfg.color}04 0%, var(--surface) 45%)` }}>
+      {/* 工具栏（仅保留添加操作，分组名由 Tab 承担） */}
+      <div className="flex items-center justify-between px-4 py-2"
+        style={{ borderBottom:`1px solid ${cfg.color}12` }}>
+        <span className="text-[11px] font-medium" style={{ color:'var(--muted)' }}>
+          {total > 0 ? `${total} 个工具` : '暂无工具'}
+        </span>
         <button onClick={onAdd}
-          className="press flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold"
-          style={{ background:`${cfg.color}0c`, color:cfg.color, border:`1px solid ${cfg.color}18` }}>
+          className="press flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold"
+          style={{ background:`${cfg.color}10`, color:cfg.color, border:`1px solid ${cfg.color}20` }}>
           <Plus className="w-3 h-3" /> 添加
         </button>
       </div>

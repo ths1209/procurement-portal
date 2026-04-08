@@ -381,7 +381,6 @@ function WishCard({ item, isOps, isAdmin, currentUser, userLabel, onRefresh, onD
   const canDelete  = canDel(item, currentUser, isAdmin)
   const fc = FOLLOW_CFG[item.followStatus] || FOLLOW_CFG['待跟进']
   const uc = URGENCY_CFG[item.urgency]
-  const topBorderColor = uc?.color ?? ACCENT
 
   async function handleFollowStatus(status) {
     setBusy(true); setShowFollow(false)
@@ -401,8 +400,8 @@ function WishCard({ item, isOps, isAdmin, currentUser, userLabel, onRefresh, onD
 
   return (
     <div
-      className="wish-card card flex flex-col h-full"
-      style={{ borderTop: `3px solid ${topBorderColor}`, position: 'relative', overflow: 'hidden' }}
+      className="wish-card wish-texture card flex flex-col h-full"
+      style={{ position: 'relative', overflow: 'hidden' }}
       onClick={() => setShowFollow(false)}
     >
       {/* 标题行 */}
@@ -558,27 +557,22 @@ function EmptyState({ search, onSubmit }) {
 
 // ─── 详情弹窗 ─────────────────────────────────────────────────────────────────
 function DetailModal({ item, onClose }) {
-  const uc  = URGENCY_CFG[item.urgency]
-  const fc  = FOLLOW_CFG[item.followStatus] || FOLLOW_CFG['待跟进']
-  const topColor = uc?.color ?? ACCENT
+  const uc = URGENCY_CFG[item.urgency]
+  const fc = FOLLOW_CFG[item.followStatus] || FOLLOW_CFG['待跟进']
 
   return createPortal(
     <div className="fixed inset-0 z-[200] overflow-y-auto animate-fade-in"
       style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(10px)' }}
       onClick={onClose}>
       <div className="flex min-h-full items-center justify-center p-4">
-        <div className="w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden"
-          style={{
-            background: 'var(--surface)',
-            border: '1px solid var(--border)',
-            borderTop: `3px solid ${topColor}`,
-          }}
+        <div className="w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden wish-texture"
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
           onClick={e => e.stopPropagation()}>
 
           <div className="flex items-center justify-between px-5 py-4"
             style={{ borderBottom: '1px solid var(--border)' }}>
             <div className="flex items-center gap-2.5 flex-1 min-w-0">
-              <Sparkles className="w-4 h-4 shrink-0" style={{ color: topColor }} />
+              <Sparkles className="w-4 h-4 shrink-0" style={{ color: ACCENT }} />
               <h3 className="font-semibold text-[15px] truncate" style={{ color: 'var(--text)' }}>
                 {item.scene}
               </h3>
@@ -610,7 +604,7 @@ function DetailModal({ item, onClose }) {
               {item.follower && <Info label="跟进人" value={item.follower} />}
             </div>
 
-            {item.history && <HistoryTimeline history={item.history} accentColor={topColor} />}
+            {item.history && <HistoryTimeline history={item.history} accentColor={ACCENT} />}
           </div>
         </div>
       </div>
@@ -714,12 +708,8 @@ function SubmitModal({ submitter, onClose, onSuccess }) {
       style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(10px)' }}
       onClick={onClose}>
       <div className="flex min-h-full items-center justify-center p-4">
-        <div className="w-full max-w-lg rounded-2xl shadow-2xl animate-scale-in overflow-hidden"
-          style={{
-            background: 'var(--surface)',
-            border: '1px solid var(--border)',
-            borderTop: `3px solid ${ACCENT}`,
-          }}
+        <div className="w-full max-w-lg rounded-2xl shadow-2xl animate-scale-in overflow-hidden wish-texture"
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
           onClick={e => e.stopPropagation()}>
 
           <div className="flex items-center justify-between px-5 py-4"

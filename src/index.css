@@ -201,6 +201,15 @@
 .wish-float { animation: wishFloat 3.8s ease-in-out infinite; }
 .twinkle    { animation: twinkle  3.2s ease-in-out infinite; }
 
+/* 需求卡片淡纹理 */
+.wish-texture {
+  background-image: radial-gradient(rgba(0,0,0,0.03) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+.dark .wish-texture {
+  background-image: radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px);
+}
+
 /* 卡片：科技感扫描光效 + 蓝色悬浮光晕 */
 .wish-card {
   position: relative;

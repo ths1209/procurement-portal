@@ -215,8 +215,5 @@ export async function updateUrgency(id, urgency, byUser, currentHistory = '', pr
 
 export async function deleteAI(id) {
   if (!TID) throw new Error('未配置 AI 需求池表')
-  await req(`/table/${TID}/record`, {
-    method: 'DELETE',
-    body: JSON.stringify({ recordIds: [id] }),
-  })
+  await req(`/table/${TID}/record/${id}`, { method: 'DELETE' })
 }

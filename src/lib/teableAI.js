@@ -215,5 +215,19 @@ export async function updateUrgency(id, urgency, byUser, currentHistory = '', pr
 
 export async function deleteAI(id) {
   if (!TID) throw new Error('未配置 AI 需求池表')
-  await req(`/table/${TID}/record/${id}`, { method: 'DELETE' })
+  const h = { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' }
+
+  // 优先：路径参数删除（单条）
+  const r1 = await fetch(`${API}/api/table/${TID}/record/${id}`, { method: 'DELETE', headers: h })
+  if (r1.status === 200 || r1.status === 204) return
+
+  // 降级：body 批量删除
+  const r2 = await fetch(`${API}/api/table/${TID}/record`, {
+    method: 'DELETE', headers: h,
+    body: JSON.stringify({ recordIds: [id] }),
+  })
+  if (r2.status === 200 || r2.status === 204) return
+
+  const b = await r2.json().catch(() => ({}))
+  throw new Error(b.message ?? `删除失败 (${r2.status})`)
 }

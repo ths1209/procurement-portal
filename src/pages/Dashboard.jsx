@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { Plus, ExternalLink, Eye, X, BarChart3, Package, Download, Upload } from 'lucide-react'
+import { Plus, ExternalLink, Eye, X, BarChart3, Package, Download, Upload, Layers, BarChart2, ShieldCheck, CreditCard } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { listAllTools, createFileTool, createUrlTool, createDashItem, deleteFileTool, trackDownload, approveTool, isToolsConfigured } from '../lib/teableTools'
 import { Clock, CheckCircle, XCircle } from 'lucide-react'
@@ -10,10 +10,10 @@ const GRADS = ['#6366F1','#0EA5E9','#10B981','#F59E0B','#8B5CF6','#14B8A6','#F97
 const GROUPS = ['采购部通用', '运营分析组', '稽核组', '支付类合作商管理组']
 
 const GROUP_CFG = {
-  '采购部通用':        { emoji:'🏢', color:'#6366F1', bg:'rgba(99,102,241,0.07)'  },
-  '运营分析组':        { emoji:'📊', color:'#0EA5E9', bg:'rgba(14,165,233,0.07)'  },
-  '稽核组':            { emoji:'🔍', color:'#10B981', bg:'rgba(16,185,129,0.07)'  },
-  '支付类合作商管理组': { emoji:'💳', color:'#F59E0B', bg:'rgba(245,158,11,0.07)' },
+  '采购部通用':        { icon: Layers,      color:'#6366F1', bg:'rgba(99,102,241,0.07)'  },
+  '运营分析组':        { icon: BarChart2,   color:'#0EA5E9', bg:'rgba(14,165,233,0.07)'  },
+  '稽核组':            { icon: ShieldCheck, color:'#10B981', bg:'rgba(16,185,129,0.07)'  },
+  '支付类合作商管理组': { icon: CreditCard,  color:'#F59E0B', bg:'rgba(245,158,11,0.07)' },
 }
 
 const DEFAULT_AI = [
@@ -190,7 +190,7 @@ export default function Dashboard() {
                     ? { background: cfg.color, color:'#fff', boxShadow:`0 2px 8px ${cfg.color}40` }
                     : { color:'var(--muted)' }
                   }>
-                  <span className="text-sm leading-none">{cfg.emoji ?? '📁'}</span>
+                  {cfg.icon && <cfg.icon className="w-3.5 h-3.5 shrink-0" />}
                   {group}
                   {n > 0 && (
                     <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold"
@@ -298,7 +298,7 @@ function Section({ title, sub, icon, iconBg, iconClr, onAdd, children }) {
 
 // ─── 分组面板 ─────────────────────────────────────────────────────────────────
 function GroupPanel({ group, urlTools, fileTools, isAdmin, onAdd, onDelUrl, onDelFile, onDownload, nameMap = {} }) {
-  const cfg = GROUP_CFG[group] ?? { emoji:'📁', color:'#64748B', bg:'rgba(100,116,139,0.07)' }
+  const cfg = GROUP_CFG[group] ?? { icon: Layers, color:'#64748B', bg:'rgba(100,116,139,0.07)' }
   const total = urlTools.length + fileTools.length
   const resolveName = v => (v && nameMap[v]) ? nameMap[v] : v
 

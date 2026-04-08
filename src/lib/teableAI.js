@@ -18,10 +18,12 @@ const FT = {
   status:      '审核状态',   // pending | approved | rejected
   follower:    '跟进人',
   followStatus:'跟进状态',   // 待跟进 | 跟进中 | 已完成
+  urgency:     '优先级',     // 紧急 | 较紧急 | 一般 | 低优先
   history:     '修改历史',
 }
 
 export const FOLLOW_STATUS_OPTS = ['待跟进', '跟进中', '已完成']
+export const URGENCY_OPTS = ['紧急', '较紧急', '一般', '低优先']
 
 const FIELD_DEFS = [
   { name: FT.scene,       type: 'singleLineText' },
@@ -33,18 +35,27 @@ const FIELD_DEFS = [
   {
     name: FT.status, type: 'singleSelect',
     options: { choices: [
-      { name: 'pending',  color: { name: 'grayLight2' } },
+      { name: 'pending',  color: { name: 'grayLight2'  } },
       { name: 'approved', color: { name: 'greenLight2' } },
-      { name: 'rejected', color: { name: 'redLight2'  } },
+      { name: 'rejected', color: { name: 'redLight2'   } },
     ]},
   },
-  { name: FT.follower,     type: 'singleLineText' },
+  { name: FT.follower, type: 'singleLineText' },
   {
     name: FT.followStatus, type: 'singleSelect',
     options: { choices: [
       { name: '待跟进', color: { name: 'grayLight2'  } },
       { name: '跟进中', color: { name: 'blueLight2'  } },
       { name: '已完成', color: { name: 'greenLight2' } },
+    ]},
+  },
+  {
+    name: FT.urgency, type: 'singleSelect',
+    options: { choices: [
+      { name: '紧急',   color: { name: 'redLight2'    } },
+      { name: '较紧急', color: { name: 'orangeLight2' } },
+      { name: '一般',   color: { name: 'yellowLight2' } },
+      { name: '低优先', color: { name: 'greenLight2'  } },
     ]},
   },
   { name: FT.history, type: 'longText' },
@@ -80,6 +91,7 @@ function norm(r) {
     status:      f[FT.status]      ?? 'pending',
     follower:    f[FT.follower]    ?? '',
     followStatus:f[FT.followStatus]?? '待跟进',
+    urgency:     f[FT.urgency]     ?? '',
     history:     f[FT.history]     ?? '',
   }
 }
@@ -122,7 +134,6 @@ export async function listAI() {
 
 export async function createAI({ scene, asis, tobe, roi }, submitter) {
   if (!TID) throw new Error('未配置 AI 需求池表')
-  const initHistory = historyLine(submitter, '提交需求')
   const fields = {
     [FT.scene]:       scene,
     [FT.asis]:        asis,
@@ -132,7 +143,7 @@ export async function createAI({ scene, asis, tobe, roi }, submitter) {
     [FT.submittedAt]: new Date().toISOString(),
     [FT.status]:      'pending',
     [FT.followStatus]:'待跟进',
-    [FT.history]:     initHistory,
+    [FT.history]:     historyLine(submitter, '提交需求'),
   }
   return req(`/table/${TID}/record?fieldKeyType=name`, {
     method: 'POST',
@@ -142,15 +153,13 @@ export async function createAI({ scene, asis, tobe, roi }, submitter) {
 
 export async function approveAI(id, approved, byUser, currentHistory = '') {
   if (!TID) throw new Error('未配置 AI 需求池表')
-  const newStatus = approved ? 'approved' : 'rejected'
   const action = approved ? '审批通过' : '审批拒绝'
-  const newHistory = appendHistory(currentHistory, byUser || '管理员', action)
   await req(`/table/${TID}/record?fieldKeyType=name`, {
     method: 'PATCH',
     body: JSON.stringify({
       records: [{ id, fields: {
-        [FT.status]:  newStatus,
-        [FT.history]: newHistory,
+        [FT.status]:  approved ? 'approved' : 'rejected',
+        [FT.history]: appendHistory(currentHistory, byUser || '管理员', action),
       }}],
     }),
   })
@@ -158,11 +167,10 @@ export async function approveAI(id, approved, byUser, currentHistory = '') {
 
 export async function followAI(id, follower, followStatus, byUser, currentHistory = '') {
   if (!TID) throw new Error('未配置 AI 需求池表')
-  const action = `接手跟进，状态设为「${followStatus || '待跟进'}」`
-  const newHistory = appendHistory(currentHistory, byUser || follower, action)
+  const action = `接手跟进，状态「${followStatus || '待跟进'}」`
   const fields = {
     [FT.follower]:    follower,
-    [FT.history]:     newHistory,
+    [FT.history]:     appendHistory(currentHistory, byUser || follower, action),
   }
   if (followStatus) fields[FT.followStatus] = followStatus
   await req(`/table/${TID}/record?fieldKeyType=name`, {
@@ -176,14 +184,29 @@ export async function updateFollowStatus(id, followStatus, byUser, currentHistor
   const action = prevStatus
     ? `跟进状态 ${prevStatus} → ${followStatus}`
     : `跟进状态更新为「${followStatus}」`
-  const newHistory = appendHistory(currentHistory, byUser, action)
   await req(`/table/${TID}/record?fieldKeyType=name`, {
     method: 'PATCH',
     body: JSON.stringify({
       records: [{ id, fields: {
         [FT.followStatus]: followStatus,
-        [FT.history]:      newHistory,
-      } }],
+        [FT.history]:      appendHistory(currentHistory, byUser, action),
+      }}],
+    }),
+  })
+}
+
+export async function updateUrgency(id, urgency, byUser, currentHistory = '', prevUrgency = '') {
+  if (!TID) throw new Error('未配置 AI 需求池表')
+  const action = prevUrgency
+    ? `优先级 ${prevUrgency || '未设置'} → ${urgency || '未设置'}`
+    : `优先级设为「${urgency}」`
+  await req(`/table/${TID}/record?fieldKeyType=name`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      records: [{ id, fields: {
+        [FT.urgency]: urgency,
+        [FT.history]: appendHistory(currentHistory, byUser, action),
+      }}],
     }),
   })
 }

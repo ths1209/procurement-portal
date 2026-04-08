@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Sparkles, Plus, RefreshCw, ChevronDown, CheckCircle2, XCircle,
-         Clock, Eye, Trash2, UserCheck, X, History, Zap, CircleDot, Layers } from 'lucide-react'
+         Clock, Eye, Trash2, UserCheck, X, History, Zap, CircleDot } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { useAuth } from '../contexts/AuthContext'
 import {
   isAIConfigured, ensureAIFields,
-  listAI, createAI, approveAI, followAI, updateFollowStatus, updateUrgency, deleteAI,
+  listAI, createAI, approveAI, followAI, updateFollowStatus, deleteAI,
   FOLLOW_STATUS_OPTS, URGENCY_OPTS,
 } from '../lib/teableAI'
 
@@ -163,10 +163,6 @@ export default function AIWishPool() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-bold tracking-tight" style={{ color: 'var(--text)' }}>AI 需求池</h1>
-                <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md tracking-widest"
-                  style={{ background: `rgba(37,99,235,0.12)`, color: ACCENT, border: `1px solid rgba(37,99,235,0.25)` }}>
-                  BETA
-                </span>
               </div>
               <p className="text-[12px] mt-0.5 font-mono" style={{ color: 'var(--muted)' }}>
                 AI_WISH_POOL · {stats.total} WISHES LOADED
@@ -190,10 +186,7 @@ export default function AIWishPool() {
             </button>
             <button onClick={() => setShowForm(true)}
               className="press flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-semibold text-white"
-              style={{
-                background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_S})`,
-                boxShadow: `0 4px 16px rgba(37,99,235,0.4)`,
-              }}>
+              style={{ background: ACCENT, boxShadow: `0 4px 14px rgba(37,99,235,0.38)` }}>
               <Plus className="w-3.5 h-3.5" />
               许个愿
             </button>
@@ -373,15 +366,13 @@ function PendingQueue({ items, onRefresh }) {
 
 // ─── 需求卡片 ─────────────────────────────────────────────────────────────────
 function WishCard({ item, isOps, isAdmin, currentUser, onRefresh, onDetail }) {
-  const [showFollow,  setShowFollow]  = useState(false)
-  const [showUrgency, setShowUrgency] = useState(false)
+  const [showFollow, setShowFollow] = useState(false)
   const [busy, setBusy] = useState(false)
 
-  const canFollow      = canClaimOrFollow(item, currentUser, isAdmin, isOps)
-  const canDelete      = canDel(item, currentUser, isAdmin)
-  const canEditUrgency = isAdmin || isOps
-  const fc  = FOLLOW_CFG[item.followStatus]  || FOLLOW_CFG['待跟进']
-  const uc  = URGENCY_CFG[item.urgency]
+  const canFollow  = canClaimOrFollow(item, currentUser, isAdmin, isOps)
+  const canDelete  = canDel(item, currentUser, isAdmin)
+  const fc = FOLLOW_CFG[item.followStatus] || FOLLOW_CFG['待跟进']
+  const uc = URGENCY_CFG[item.urgency]
   const topBorderColor = uc?.color ?? ACCENT
 
   async function handleFollowStatus(status) {
@@ -394,12 +385,6 @@ function WishCard({ item, isOps, isAdmin, currentUser, onRefresh, onDetail }) {
     finally { setBusy(false) }
   }
 
-  async function handleUrgency(value) {
-    setShowUrgency(false)
-    try { await updateUrgency(item._id, value, currentUser, item.history, item.urgency); onRefresh() }
-    catch (e) { alert(e.message) }
-  }
-
   async function handleDelete() {
     if (!confirm(`删除愿望「${item.scene}」？`)) return
     try { await deleteAI(item._id); onRefresh() }
@@ -410,7 +395,7 @@ function WishCard({ item, isOps, isAdmin, currentUser, onRefresh, onDetail }) {
     <div
       className="wish-card card flex flex-col h-full"
       style={{ borderTop: `3px solid ${topBorderColor}`, position: 'relative', overflow: 'hidden' }}
-      onClick={() => { setShowFollow(false); setShowUrgency(false) }}
+      onClick={() => setShowFollow(false)}
     >
       {/* 标题行 */}
       <div className="px-4 pt-4 pb-3 flex items-start gap-2"
@@ -419,46 +404,14 @@ function WishCard({ item, isOps, isAdmin, currentUser, onRefresh, onDetail }) {
           {item.scene || '（无标题）'}
         </p>
 
-        {/* 优先级 badge + picker */}
-        <div className="relative shrink-0" onClick={e => e.stopPropagation()}>
-          <button
-            onClick={() => canEditUrgency && setShowUrgency(v => !v)}
-            className={`flex items-center gap-1 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md transition-all ${canEditUrgency ? 'press cursor-pointer' : 'cursor-default'}`}
-            style={uc
-              ? { background: uc.bg, color: uc.color, border: `1px solid ${uc.color}44` }
-              : { background: 'var(--surface2)', color: 'var(--muted)', border: '1px solid var(--border)' }
-            }
-            title={canEditUrgency ? '设置优先级' : item.urgency || '未设置优先级'}>
+        {/* 优先级只读 badge */}
+        {uc && (
+          <span className="flex items-center gap-1 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md shrink-0"
+            style={{ background: uc.bg, color: uc.color, border: `1px solid ${uc.color}33` }}>
             <CircleDot className="w-2.5 h-2.5" />
-            {uc ? uc.label : '···'}
-          </button>
-          {showUrgency && (
-            <div className="absolute right-0 top-full mt-1.5 z-30 p-2 rounded-xl shadow-2xl flex gap-1.5"
-              style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: `0 8px 32px rgba(0,0,0,0.15), 0 0 0 1px ${ACCENT}15` }}>
-              {/* 清除 */}
-              <button onClick={() => handleUrgency('')}
-                className="press w-5 h-5 rounded-full border flex items-center justify-center hover:scale-110 transition-transform"
-                style={{ borderColor: 'var(--border)', background: 'var(--surface2)' }}
-                title="清除">
-                <X className="w-2.5 h-2.5" style={{ color: 'var(--muted)' }} />
-              </button>
-              {URGENCY_OPTS.map(u => {
-                const c = URGENCY_CFG[u]
-                return (
-                  <button key={u} onClick={() => handleUrgency(u)}
-                    className="press w-5 h-5 rounded-full transition-transform hover:scale-125"
-                    style={{
-                      background: c.color,
-                      outline: item.urgency === u ? `2px solid ${c.color}` : 'none',
-                      outlineOffset: 2,
-                      boxShadow: `0 2px 6px ${c.color}55`,
-                    }}
-                    title={u} />
-                )
-              })}
-            </div>
-          )}
-        </div>
+            {uc.label}
+          </span>
+        )}
       </div>
 
       {/* 内容 */}
@@ -709,7 +662,7 @@ function HistoryTimeline({ history, accentColor }) {
 
 // ─── 提交弹窗 ─────────────────────────────────────────────────────────────────
 function SubmitModal({ submitter, onClose, onSuccess }) {
-  const [form,   setForm]   = useState({ scene: '', asis: '', tobe: '', roi: '' })
+  const [form,   setForm]   = useState({ scene: '', asis: '', tobe: '', roi: '', urgency: '' })
   const [saving, setSaving] = useState(false)
   const [err,    setErr]    = useState('')
   const [done,   setDone]   = useState(false)
@@ -778,6 +731,35 @@ function SubmitModal({ submitter, onClose, onSuccess }) {
                 style={{ background: `rgba(37,99,235,0.07)`, color: ACCENT }}>
                 // 审批通过后将在需求池中公开展示
               </p>
+
+              {/* 紧急程度选择 */}
+              <div>
+                <p className="text-[10px] font-mono font-bold tracking-widest mb-2"
+                  style={{ color: 'var(--text)', opacity: 0.5 }}>
+                  URGENCY — 需求紧急程度
+                </p>
+                <div className="flex gap-2 flex-wrap">
+                  {['', ...URGENCY_OPTS].map(u => {
+                    const c = URGENCY_CFG[u]
+                    const active = form.urgency === u
+                    return (
+                      <button key={u} type="button"
+                        onClick={() => set('urgency', u)}
+                        className="press flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                        style={active && c
+                          ? { background: c.bg, color: c.color, border: `1.5px solid ${c.color}66`, boxShadow: `0 2px 8px ${c.color}33` }
+                          : active
+                            ? { background: 'var(--surface2)', color: 'var(--text)', border: '1.5px solid var(--border)' }
+                            : { background: 'transparent', color: 'var(--muted)', border: '1px solid var(--border)' }
+                        }>
+                        {c && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: c.color }} />}
+                        {u || '不设置'}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
               {FIELDS.map(f => (
                 <div key={f.key}>
                   <label className="block text-[10px] font-mono font-bold tracking-widest mb-1.5"
@@ -798,10 +780,7 @@ function SubmitModal({ submitter, onClose, onSuccess }) {
                 </button>
                 <button type="submit" disabled={saving}
                   className="press flex-1 py-2.5 text-sm font-semibold text-white rounded-xl disabled:opacity-60"
-                  style={{
-                    background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_S})`,
-                    boxShadow: `0 4px 16px rgba(37,99,235,0.35)`,
-                  }}>
+                  style={{ background: ACCENT, boxShadow: `0 4px 14px rgba(37,99,235,0.35)` }}>
                   {saving ? 'SUBMITTING...' : '提交需求 ✦'}
                 </button>
               </div>

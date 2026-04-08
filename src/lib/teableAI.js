@@ -52,10 +52,10 @@ const FIELD_DEFS = [
   {
     name: FT.urgency, type: 'singleSelect',
     options: { choices: [
-      { name: '紧急',   color: { name: 'redLight2'    } },
-      { name: '较紧急', color: { name: 'orangeLight2' } },
-      { name: '一般',   color: { name: 'yellowLight2' } },
-      { name: '低优先', color: { name: 'greenLight2'  } },
+      { name: '紧急'   },
+      { name: '较紧急' },
+      { name: '一般'   },
+      { name: '低优先' },
     ]},
   },
   { name: FT.history, type: 'longText' },
@@ -132,7 +132,7 @@ export async function listAI() {
   }
 }
 
-export async function createAI({ scene, asis, tobe, roi }, submitter) {
+export async function createAI({ scene, asis, tobe, roi, urgency }, submitter) {
   if (!TID) throw new Error('未配置 AI 需求池表')
   const fields = {
     [FT.scene]:       scene,
@@ -143,8 +143,9 @@ export async function createAI({ scene, asis, tobe, roi }, submitter) {
     [FT.submittedAt]: new Date().toISOString(),
     [FT.status]:      'pending',
     [FT.followStatus]:'待跟进',
-    [FT.history]:     historyLine(submitter, '提交需求'),
+    [FT.history]:     historyLine(submitter, `提交需求${urgency ? `，优先级「${urgency}」` : ''}`),
   }
+  if (urgency) fields[FT.urgency] = urgency
   return req(`/table/${TID}/record?fieldKeyType=name`, {
     method: 'POST',
     body: JSON.stringify({ records: [{ fields }] }),

@@ -75,7 +75,8 @@ async function req(path, init = {}) {
     const b = await res.json().catch(() => ({}))
     throw new Error(b.message ?? `API ${res.status}`)
   }
-  return res.json()
+  if (res.status === 204) return null
+  return res.json().catch(() => null)
 }
 
 function norm(r) {

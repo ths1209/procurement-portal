@@ -39,14 +39,19 @@ const NODES = [
 ]
 
 // ─── 权限 ─────────────────────────────────────────────────────────────────────
+// 兼容「张三」和「张三-12345」两种格式
+function matchesUser(stored, displayName) {
+  if (!stored || !displayName) return false
+  return stored === displayName || stored.startsWith(displayName + '-')
+}
 function canClaimOrFollow(item, currentUser, isAdmin, isOps) {
   if (!isOps) return false
   if (!item.follower) return true
-  return item.follower === currentUser || isAdmin
+  return matchesUser(item.follower, currentUser) || isAdmin
 }
 function canDel(item, currentUser, isAdmin) {
   if (isAdmin) return true
-  return !!(item.follower && item.follower === currentUser)
+  return !!(item.follower && matchesUser(item.follower, currentUser))
 }
 
 // ─── 主页面 ───────────────────────────────────────────────────────────────────
@@ -55,6 +60,10 @@ export default function AIWishPool() {
   const isAdmin     = profile?.role === 'admin'
   const isOps       = isAdmin || profile?.dept === '采购运营组'
   const currentUser = profile?.displayName || profile?.email || ''
+  // 姓名-工号 格式，用于写入 Teable
+  const userLabel   = profile?.displayName
+    ? (profile.jobId ? `${profile.displayName}-${profile.jobId}` : profile.displayName)
+    : (profile?.email || '')
 
   const [approved, setApproved] = useState([])
   const [pending,  setPending]  = useState([])
@@ -196,7 +205,7 @@ export default function AIWishPool() {
 
       {/* ── 管理员待审批 ── */}
       {isAdmin && pending.length > 0 && (
-        <PendingQueue items={pending} currentUser={currentUser} onRefresh={load} />
+        <PendingQueue items={pending} userLabel={userLabel} onRefresh={load} />
       )}
 
       {/* ── 搜索栏 ── */}
@@ -271,6 +280,7 @@ export default function AIWishPool() {
                           isOps={isOps}
                           isAdmin={isAdmin}
                           currentUser={currentUser}
+                          userLabel={userLabel}
                           onRefresh={load}
                           onDetail={() => setDetail(item)}
                         />
@@ -286,7 +296,7 @@ export default function AIWishPool() {
 
       {showForm && (
         <SubmitModal
-          submitter={currentUser}
+          submitter={userLabel}
           onClose={() => setShowForm(false)}
           onSuccess={() => { setShowForm(false); load() }}
         />
@@ -309,14 +319,12 @@ function TechStat({ label, value, color, show = true }) {
 }
 
 // ─── 待审批队列 ───────────────────────────────────────────────────────────────
-function PendingQueue({ items, onRefresh }) {
+function PendingQueue({ items, userLabel, onRefresh }) {
   const [busy, setBusy] = useState({})
-  const { profile } = useAuth()
-  const byUser = profile?.displayName || profile?.email || '管理员'
 
   async function handle(item, approved) {
     setBusy(b => ({ ...b, [item._id]: true }))
-    try { await approveAI(item._id, approved, byUser, item.history); onRefresh() }
+    try { await approveAI(item._id, approved, userLabel || '管理员', item.history); onRefresh() }
     catch (e) { alert(e.message) }
     finally { setBusy(b => ({ ...b, [item._id]: false })) }
   }
@@ -365,7 +373,7 @@ function PendingQueue({ items, onRefresh }) {
 }
 
 // ─── 需求卡片 ─────────────────────────────────────────────────────────────────
-function WishCard({ item, isOps, isAdmin, currentUser, onRefresh, onDetail }) {
+function WishCard({ item, isOps, isAdmin, currentUser, userLabel, onRefresh, onDetail }) {
   const [showFollow, setShowFollow] = useState(false)
   const [busy, setBusy] = useState(false)
 
@@ -378,8 +386,8 @@ function WishCard({ item, isOps, isAdmin, currentUser, onRefresh, onDetail }) {
   async function handleFollowStatus(status) {
     setBusy(true); setShowFollow(false)
     try {
-      if (!item.follower) await followAI(item._id, currentUser, status, currentUser, item.history)
-      else await updateFollowStatus(item._id, status, currentUser, item.history, item.followStatus)
+      if (!item.follower) await followAI(item._id, userLabel, status, userLabel, item.history)
+      else await updateFollowStatus(item._id, status, userLabel, item.history, item.followStatus)
       onRefresh()
     } catch (e) { alert(e.message) }
     finally { setBusy(false) }
@@ -421,10 +429,15 @@ function WishCard({ item, isOps, isAdmin, currentUser, onRefresh, onDetail }) {
         {item.roi  && <FieldBlock label="ROI"   color="#22C55E"   text={item.roi}  lines={2} />}
       </div>
 
-      {/* 底栏 */}
-      <div className="px-4 pb-3.5 pt-2.5 flex items-center justify-between gap-2"
+      {/* 人员 badges */}
+      <div className="px-4 pt-2.5 pb-2 flex items-center gap-1.5 flex-wrap"
         style={{ borderTop: '1px solid var(--border)' }}>
+        <PersonBadge name={item.submitter} role="提交" />
+        {item.follower && <PersonBadge name={item.follower} role="跟进" accent />}
+      </div>
 
+      {/* 操作栏 */}
+      <div className="px-4 pb-3 flex items-center justify-between gap-2">
         {/* 跟进状态 */}
         <div className="relative" onClick={e => e.stopPropagation()}>
           {isOps ? (
@@ -432,9 +445,9 @@ function WishCard({ item, isOps, isAdmin, currentUser, onRefresh, onDetail }) {
               <button
                 disabled={busy || !canFollow}
                 onClick={() => setShowFollow(v => !v)}
-                className={`press flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg transition-all ${canFollow ? '' : 'opacity-50 cursor-not-allowed'}`}
+                className={`press flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg ${canFollow ? '' : 'opacity-50 cursor-not-allowed'}`}
                 style={{ background: fc.bg, color: fc.color }}
-                title={!canFollow ? `仅跟进人「${item.follower}」或 admin 可修改` : undefined}>
+                title={!canFollow ? `仅跟进人或 admin 可修改` : undefined}>
                 <UserCheck className="w-3 h-3" />
                 {item.followStatus || '待跟进'}
                 {canFollow && <ChevronDown className="w-2.5 h-2.5" />}
@@ -463,13 +476,7 @@ function WishCard({ item, isOps, isAdmin, currentUser, onRefresh, onDetail }) {
           )}
         </div>
 
-        {/* 右侧操作 */}
         <div className="flex items-center gap-1.5">
-          {item.follower && (
-            <span className="text-[10px] font-mono truncate max-w-[70px]" style={{ color: 'var(--muted)' }}>
-              @{item.follower}
-            </span>
-          )}
           <button onClick={onDetail}
             className="press flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg font-medium"
             style={{ background: 'var(--surface2)', color: 'var(--muted)', border: '1px solid var(--border)' }}>
@@ -478,14 +485,28 @@ function WishCard({ item, isOps, isAdmin, currentUser, onRefresh, onDetail }) {
           {canDelete && (
             <button onClick={handleDelete}
               className="press w-7 h-7 flex items-center justify-center rounded-lg opacity-25 hover:opacity-100 transition-opacity"
-              style={{ color: '#EF4444' }}
-              title="删除">
+              style={{ color: '#EF4444' }}>
               <Trash2 className="w-3 h-3" />
             </button>
           )}
         </div>
       </div>
     </div>
+  )
+}
+
+// 姓名-工号 badge
+function PersonBadge({ name, role, accent }) {
+  if (!name) return null
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md leading-none"
+      style={accent
+        ? { background: `rgba(37,99,235,0.1)`, color: ACCENT, border: `1px solid rgba(37,99,235,0.2)` }
+        : { background: 'var(--surface2)', color: 'var(--muted)', border: '1px solid var(--border)' }
+      }>
+      <span style={{ opacity: 0.55 }}>{role}</span>
+      <span>{name}</span>
+    </span>
   )
 }
 

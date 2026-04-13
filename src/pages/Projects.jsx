@@ -1169,7 +1169,7 @@ function MonthlyReport({ rows, onClose }) {
             )}
             {aiText && (
               <div className="rounded-xl p-4 space-y-2"
-                style={{ background:'rgba(139,92,246,0.05)', border:'1px solid rgba(139,92,246,0.15)' }}>
+                style={{ background:'rgba(139,92,246,0.05)', border:'1px solid rgba(139,92,246,0.15)', maxHeight: 360, overflowY: 'auto' }}>
                 <div className="flex items-center gap-1.5 mb-2">
                   <Sparkles className="w-3.5 h-3.5" style={{ color:'#7C3AED' }} />
                   <span className="text-[11px] font-semibold" style={{ color:'#7C3AED' }}>AI 生成汇报</span>

@@ -9,6 +9,7 @@ import Projects from './pages/Projects'
 import Reviews from './pages/Reviews'
 import Consulting from './pages/Consulting'
 import AIWishPool from './pages/AIWishPool'
+import OKRReport from './pages/OKRReport'
 import AdminPanel from './pages/AdminPanel'
 
 function AnimatedRoutes() {
@@ -38,6 +39,9 @@ function AnimatedRoutes() {
       } />
       <Route path="/ai-wishes" element={
         <ProtectedRoute><Layout><AIWishPool /></Layout></ProtectedRoute>
+      } />
+      <Route path="/okr-report" element={
+        <ProtectedRoute><Layout><OKRReport /></Layout></ProtectedRoute>
       } />
       <Route path="/projects" element={
         <ProtectedRoute><Layout><Projects /></Layout></ProtectedRoute>

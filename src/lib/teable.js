@@ -48,6 +48,7 @@ function normalize(record) {
     role:         f.role         ?? 'member',
     dept:         f.dept         ?? '',      // '采购运营组' | '集团采购部'
     group:        f.group        ?? '',      // '运营分析组' | '采购稽核组' | '供应商管理组'
+    okrGroup:     f.okrGroup     ?? '',      // OKR 负责组：'采购一组'…'采购五组'，非空即为采购经理
     jobId:        f.jobId        ?? '',      // 工号
     status:       f.status       ?? 'pending',
     createdAt:    f.createdAt    ?? '',
@@ -71,6 +72,10 @@ const USER_EXTRA_FIELDS = [
   ]}},
   { name: 'group', type: 'singleSelect', options: { choices: [
     { name: '运营分析组' }, { name: '采购稽核组' }, { name: '供应商管理组' },
+  ]}},
+  { name: 'okrGroup', type: 'singleSelect', options: { choices: [
+    { name: '采购一组' }, { name: '采购二组' }, { name: '采购三组' },
+    { name: '采购四组' }, { name: '采购五组' },
   ]}},
   { name: 'jobId', type: 'singleLineText' },
 ]

@@ -129,8 +129,8 @@ export default function AdminPanel() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom:'1px solid var(--border)', background:'var(--surface2)' }}>
-                  {['姓名 / 邮箱','部门','小组','工号','状态','角色','注册时间','操作'].map((h,i) => (
-                    <th key={h} className={`px-4 py-3 text-left text-[11px] font-semibold tracking-wide ${i===7?'text-right':''}`}
+                  {['姓名 / 邮箱','部门','小组','工号','状态','角色','OKR 负责组','注册时间','操作'].map((h,i) => (
+                    <th key={h} className={`px-4 py-3 text-left text-[11px] font-semibold tracking-wide ${i===8?'text-right':''}`}
                       style={{ color:'var(--muted)' }}>{h}</th>
                   ))}
                 </tr>
@@ -253,8 +253,9 @@ function AnalyticsSection({ data, loading }) {
   )
 }
 
-const DEPT_OPTS  = ['', '采购运营组', '集团采购部']
-const GROUP_OPTS = ['', '运营分析组', '采购稽核组', '供应商管理组']
+const DEPT_OPTS      = ['', '采购运营组', '集团采购部']
+const GROUP_OPTS     = ['', '运营分析组', '采购稽核组', '供应商管理组']
+const OKR_GROUP_OPTS = ['采购一组', '采购二组', '采购三组', '采购四组', '采购五组']
 const DEPT_CFG = {
   '采购运营组': { bg:'rgba(99,102,241,0.1)',  color:'#6366F1' },
   '集团采购部': { bg:'rgba(14,165,233,0.1)',  color:'#0284C7' },
@@ -353,6 +354,22 @@ function UserRow({ user: u, isSelf, actionLoading, onStatusChange, onRoleChange,
             disabled={busy} className="field text-xs py-1.5 px-2.5" style={{ width:'auto' }}>
             <option value="member">普通成员</option>
             <option value="admin">管理员</option>
+          </select>
+        )}
+      </td>
+
+      {/* OKR 负责组 */}
+      <td className="px-4 py-3.5">
+        {isSelf ? (
+          u.okrGroup
+            ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold"
+                style={{ background:'rgba(37,99,235,0.1)', color:'#2563EB' }}>{u.okrGroup}</span>
+            : <span style={{ color:'var(--muted)', opacity:0.3 }}>—</span>
+        ) : (
+          <select value={u.okrGroup||''} onChange={e => onProfileChange(u.uid, { okrGroup: e.target.value || null })}
+            disabled={busy} className="field text-xs py-1.5 px-2" style={{ width:'auto', minWidth:90 }}>
+            <option value="">无</option>
+            {OKR_GROUP_OPTS.map(o => <option key={o} value={o}>{o}</option>)}
           </select>
         )}
       </td>

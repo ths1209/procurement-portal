@@ -4,6 +4,7 @@ import {
   ChevronDown, ChevronRight, Plus, Edit2, Trash2,
   Check, Calendar, BarChart3, Settings, RefreshCw, Save,
   AlertCircle, FileText, X, Clock, Copy, Bot, ScrollText,
+  Bell, Send, Loader2,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import {
@@ -13,6 +14,8 @@ import {
   appendHistory, getHistory,
   uid, OKR_GROUPS, getFiscalYear,
 } from '../lib/teableOKR'
+import { listUsers } from '../lib/teable'
+import { sendNotify } from '../lib/notify'
 
 const FY      = getFiscalYear()
 const ACCENT  = '#2563EB'
@@ -249,19 +252,63 @@ export default function OKRReport() {
 
 // ── 进度总览（OKR 中心视图，跨周期对比） ──────────────────────────────────────────
 function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
+  const { profile } = useAuth()
   const [typeFilter,    setTypeFilter]    = useState('')
-  const [periodCount,   setPeriodCount]   = useState('all')  // 'all'|'3'|'6'
+  const [periodCount,   setPeriodCount]   = useState('all')  // 'all'|'3'|'6'|'single'
+  const [singlePeriodId, setSinglePeriodId] = useState('')
   const [expandedObjs,  setExpandedObjs]  = useState(new Set())
   const [krHistories,   setKrHistories]   = useState({})     // { krId: entries[] }
   const [loadingHist,   setLoadingHist]   = useState(null)
   const [expandedHist,  setExpandedHist]  = useState(new Set())
   const [detailModal,   setDetailModal]   = useState(null)   // { periodId, group, kr, periodLabel }
+  const [urgeModal,     setUrgeModal]     = useState(null)   // { period, people, targetGroups }
+  const [loadingUrge,   setLoadingUrge]   = useState(false)
 
   const filteredPeriods = useMemo(() => {
     if (periodCount === '3') return periods.slice(0, 3)
     if (periodCount === '6') return periods.slice(0, 6)
+    if (periodCount === 'single' && singlePeriodId) return periods.filter(p => p.id === singlePeriodId)
     return periods
-  }, [periods, periodCount])
+  }, [periods, periodCount, singlePeriodId])
+
+  // 催办目标周期：单选时用对应周期，否则用最新一期
+  const urgePeriod = useMemo(() =>
+    periodCount === 'single' && singlePeriodId
+      ? periods.find(p => p.id === singlePeriodId)
+      : periods[0]
+  , [periods, periodCount, singlePeriodId])
+
+  async function openUrgeModal(targetGroup = null) {
+    if (!urgePeriod) { alert('暂无汇报周期，请先在「周期管理」中创建'); return }
+    setLoadingUrge(true)
+    try {
+      const users = await listUsers()
+      const managers = users.filter(u => u.okrGroup && u.status !== 'disabled')
+      const periodReports = allReports[urgePeriod.id] || {}
+
+      // 判断哪些组未提交（无数据或草稿状态）
+      const checkGroups = targetGroup ? [targetGroup] : OKR_GROUPS
+      const unfilledGroups = checkGroups.filter(g => {
+        const rep = periodReports[g]
+        if (!rep || Object.keys(rep).filter(k => k !== '_meta').length === 0) return true
+        return (rep._meta?.status || 'draft') !== 'submitted'
+      })
+
+      if (unfilledGroups.length === 0) {
+        alert(`「${urgePeriod.label}」所有组均已提交报告`)
+        return
+      }
+
+      // 找对应负责人
+      const people = unfilledGroups.map(g => {
+        const manager = managers.find(u => u.okrGroup === g)
+        return { group: g, uid: manager?.uid || g, displayName: manager?.displayName || '（未配置）', jobId: manager?.jobId || '' }
+      })
+
+      setUrgeModal({ period: urgePeriod, people })
+    } catch (e) { alert('加载用户信息失败：' + e.message) }
+    finally { setLoadingUrge(false) }
+  }
 
   const items = useMemo(() => {
     const r = []
@@ -303,7 +350,8 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
   return (
     <div className="space-y-4">
       {/* 筛选栏 */}
-      <div className="card p-3.5 flex items-center gap-5 flex-wrap">
+      <div className="card p-3.5 flex items-center gap-4 flex-wrap">
+        {/* OKR 类型 */}
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium shrink-0" style={{ color: 'var(--muted)' }}>OKR 类型</span>
           <div className="flex gap-1">
@@ -318,11 +366,14 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
             ))}
           </div>
         </div>
+
+        {/* 显示周期：快捷按钮 + 单选下拉 */}
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium shrink-0" style={{ color: 'var(--muted)' }}>显示周期</span>
           <div className="flex gap-1">
             {[['all', '全量'], ['6', '近 6 期'], ['3', '近 3 期']].map(([v, l]) => (
-              <button key={v} onClick={() => setPeriodCount(v)}
+              <button key={v}
+                onClick={() => { setPeriodCount(v); setSinglePeriodId('') }}
                 className="press px-3 py-1 rounded-lg text-[11px] font-medium"
                 style={periodCount === v
                   ? { background: ACCENT, color: '#fff' }
@@ -331,10 +382,37 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
               </button>
             ))}
           </div>
+          <select
+            value={periodCount === 'single' ? singlePeriodId : ''}
+            onChange={e => {
+              if (e.target.value) { setPeriodCount('single'); setSinglePeriodId(e.target.value) }
+              else { setPeriodCount('all'); setSinglePeriodId('') }
+            }}
+            className="field text-[11px] py-1 px-2"
+            style={{ minWidth: 130, borderColor: periodCount === 'single' ? ACCENT : 'var(--border)',
+              color: periodCount === 'single' ? ACCENT : 'var(--muted)' }}>
+            <option value="">指定周期…</option>
+            {periods.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+          </select>
         </div>
-        <span className="text-[11px] ml-auto" style={{ color: 'var(--muted)' }}>
-          {filteredPeriods.length} 个周期 · hover 查看进展，点击查看详情
-        </span>
+
+        {/* 催办按钮 */}
+        <div className="flex items-center gap-2 ml-auto">
+          <span className="text-[11px]" style={{ color: 'var(--muted)' }}>
+            {filteredPeriods.length} 个周期
+          </span>
+          <button
+            onClick={() => openUrgeModal()}
+            disabled={loadingUrge || periods.length === 0}
+            className="press flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-semibold disabled:opacity-50"
+            style={{ background: 'rgba(239,68,68,0.08)', color: '#DC2626',
+              border: '1px solid rgba(239,68,68,0.2)' }}>
+            {loadingUrge
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <Bell className="w-3.5 h-3.5" />}
+            一键催办
+          </button>
+        </div>
       </div>
 
       {filteredPeriods.length === 0 && (
@@ -394,6 +472,7 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
                     onToggleHistory={() => toggleKRHistory(kr.id)}
                     onCellClick={(periodId, group, periodLabel) =>
                       setDetailModal({ periodId, group, kr, periodLabel })}
+                    onUrgeGroup={openUrgeModal}
                   />
                 ))}
               </div>
@@ -409,12 +488,20 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
           onClose={() => setDetailModal(null)}
         />
       )}
+
+      {urgeModal && (
+        <OKRUrgeModal
+          period={urgeModal.period}
+          people={urgeModal.people}
+          onClose={() => setUrgeModal(null)}
+        />
+      )}
     </div>
   )
 }
 
 // ── KR 行：周期×组 对比表格 ───────────────────────────────────────────────────
-function KRSection({ kr, ki, filteredPeriods, allReports, historyEntries, historyExpanded, historyLoading, onToggleHistory, onCellClick }) {
+function KRSection({ kr, ki, filteredPeriods, allReports, historyEntries, historyExpanded, historyLoading, onToggleHistory, onCellClick, onUrgeGroup }) {
   const FIELD_LABELS = { status: '状态', content: '进展' }
   const fmtTs = ts => {
     if (!ts) return ''
@@ -442,7 +529,17 @@ function KRSection({ kr, ki, filteredPeriods, allReports, historyEntries, histor
                     style={{ color: 'var(--muted)' }}>汇报周期</th>
                   {OKR_GROUPS.map(g => (
                     <th key={g} className="pb-2 px-1 font-semibold text-[10px] text-center" style={{ color: 'var(--muted)' }}>
-                      {g.replace('采购', '')}
+                      <div className="flex flex-col items-center gap-0.5">
+                        <span>{g.replace('采购', '')}</span>
+                        {onUrgeGroup && (
+                          <button onClick={() => onUrgeGroup(g)}
+                            title={`催办${g}`}
+                            className="press opacity-30 hover:opacity-80 transition-opacity"
+                            style={{ color: '#DC2626' }}>
+                            <Bell className="w-2.5 h-2.5" />
+                          </button>
+                        )}
+                      </div>
                     </th>
                   ))}
                 </tr>
@@ -1223,6 +1320,159 @@ function PeriodsPanel({ periods, setPeriods, profile, onNewPeriod }) {
         </ModalShell>
       )}
     </div>
+  )
+}
+
+// ── 催办确认 Modal ──────────────────────────────────────────────────────────
+function OKRUrgeModal({ period, people, onClose }) {
+  const [selected, setSelected] = useState(() => new Set(people.map(p => p.uid)))
+  const [sending,  setSending]  = useState(false)
+  const [results,  setResults]  = useState(null)  // { sent, failed }
+
+  function toggle(uid) {
+    setSelected(prev => { const s = new Set(prev); s.has(uid) ? s.delete(uid) : s.add(uid); return s })
+  }
+
+  async function handleSend() {
+    const targets = people.filter(p => selected.has(p.uid))
+    if (targets.length === 0) { alert('请至少选择一名催办对象'); return }
+    setSending(true)
+    const sent = [], failed = []
+    for (const p of targets) {
+      if (!p.jobId) { failed.push({ ...p, reason: '未配置工号' }); continue }
+      try {
+        const content = `您好，${period.label} OKR 进度报告（${p.group}）尚未提交，请尽快登录采购运营门户完成填写。`
+        await sendNotify(p.jobId, content)
+        sent.push(p)
+      } catch (e) {
+        failed.push({ ...p, reason: e.message || '发送失败' })
+      }
+    }
+    setResults({ sent, failed })
+    setSending(false)
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[200] overflow-y-auto animate-fade-in"
+      style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)' }}
+      onClick={results ? onClose : undefined}>
+      <div className="flex min-h-full items-center justify-center p-4" onClick={e => e.stopPropagation()}>
+        <div className="w-full max-w-md rounded-2xl shadow-2xl animate-scale-in"
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          {/* 头部 */}
+          <div className="flex items-center justify-between px-5 py-4"
+            style={{ borderBottom: '1px solid var(--border)' }}>
+            <div className="flex items-center gap-2">
+              <Bell className="w-4 h-4" style={{ color: '#DC2626' }} />
+              <h3 className="font-semibold text-[15px]" style={{ color: 'var(--text)' }}>催办提醒</h3>
+            </div>
+            <button onClick={onClose} className="press w-7 h-7 flex items-center justify-center rounded-xl"
+              style={{ background: 'var(--surface2)', color: 'var(--muted)' }}><X className="w-3.5 h-3.5" /></button>
+          </div>
+
+          <div className="p-5 space-y-4">
+            {/* 周期信息 */}
+            <div className="px-3 py-2 rounded-xl text-[12px]"
+              style={{ background: 'rgba(239,68,68,0.06)', color: '#DC2626', border: '1px solid rgba(239,68,68,0.15)' }}>
+              催办周期：<span className="font-semibold">{period.label}</span>
+              <span className="ml-2 opacity-70">{period.start} ~ {period.end}</span>
+            </div>
+
+            {results ? (
+              /* 发送结果 */
+              <div className="space-y-3">
+                {results.sent.length > 0 && (
+                  <div>
+                    <p className="text-[11px] font-semibold mb-1.5" style={{ color: '#059669' }}>
+                      发送成功（{results.sent.length}）
+                    </p>
+                    {results.sent.map(p => (
+                      <div key={p.uid} className="flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] mb-1"
+                        style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.15)' }}>
+                        <Check className="w-3 h-3 shrink-0" style={{ color: '#059669' }} />
+                        <span className="font-semibold" style={{ color: 'var(--text)' }}>{p.group}</span>
+                        <span style={{ color: 'var(--muted)' }}>{p.displayName}</span>
+                        <span className="ml-auto font-mono text-[10px]" style={{ color: 'var(--muted)' }}>{p.jobId}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {results.failed.length > 0 && (
+                  <div>
+                    <p className="text-[11px] font-semibold mb-1.5" style={{ color: '#DC2626' }}>
+                      发送失败（{results.failed.length}）
+                    </p>
+                    {results.failed.map(p => (
+                      <div key={p.uid} className="flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] mb-1"
+                        style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.12)' }}>
+                        <X className="w-3 h-3 shrink-0" style={{ color: '#DC2626' }} />
+                        <span className="font-semibold" style={{ color: 'var(--text)' }}>{p.group}</span>
+                        <span style={{ color: 'var(--muted)' }}>{p.displayName}</span>
+                        <span className="ml-auto text-[10px]" style={{ color: '#DC2626' }}>{p.reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button onClick={onClose}
+                  className="press w-full py-2.5 text-sm font-semibold rounded-xl text-white"
+                  style={{ background: ACCENT }}>关闭</button>
+              </div>
+            ) : (
+              <>
+                {/* 人员列表（可勾选） */}
+                <div className="space-y-2">
+                  <p className="text-[11px] font-semibold" style={{ color: 'var(--muted)' }}>
+                    以下小组尚未提交报告，将向其 OKR 负责人发送催办通知：
+                  </p>
+                  {people.map(p => (
+                    <label key={p.uid}
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all"
+                      style={{
+                        background: selected.has(p.uid) ? 'rgba(37,99,235,0.06)' : 'var(--surface2)',
+                        border: `1px solid ${selected.has(p.uid) ? 'rgba(37,99,235,0.2)' : 'var(--border)'}`,
+                      }}>
+                      <input type="checkbox" checked={selected.has(p.uid)} onChange={() => toggle(p.uid)}
+                        className="w-3.5 h-3.5 rounded accent-blue-600 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[12px] font-semibold" style={{ color: 'var(--text)' }}>{p.group}</span>
+                          <span className="text-[11px]" style={{ color: 'var(--muted)' }}>{p.displayName}</span>
+                        </div>
+                        {p.jobId
+                          ? <span className="text-[10px] font-mono" style={{ color: 'var(--muted)' }}>工号：{p.jobId}</span>
+                          : <span className="text-[10px]" style={{ color: '#DC2626' }}>⚠ 未配置工号，无法发送</span>}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+
+                {/* 提示 */}
+                <div className="flex items-start gap-2 px-3 py-2 rounded-xl text-[11px]"
+                  style={{ background: 'rgba(245,158,11,0.06)', color: '#92400E', border: '1px solid rgba(245,158,11,0.15)' }}>
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  将通过数环通向所选工号发送催办消息
+                </div>
+
+                {/* 操作按钮 */}
+                <div className="flex gap-2.5 pt-1">
+                  <button onClick={onClose} disabled={sending}
+                    className="press flex-1 py-2.5 text-sm font-semibold rounded-xl disabled:opacity-50"
+                    style={{ background: 'var(--surface2)', color: 'var(--muted)' }}>取消</button>
+                  <button onClick={handleSend} disabled={sending || selected.size === 0}
+                    className="press flex-1 flex items-center justify-center gap-1.5 py-2.5 text-sm font-semibold text-white rounded-xl disabled:opacity-50"
+                    style={{ background: '#DC2626' }}>
+                    {sending
+                      ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />发送中…</>
+                      : <><Send className="w-3.5 h-3.5" />发送催办（{selected.size}）</>}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
   )
 }
 

@@ -99,7 +99,7 @@ export async function ensureUserFields() {
 
 /** 获取所有用户（小团队全量加载后客户端过滤） */
 export async function listUsers() {
-  const data = await request(`/table/${TID}/record?take=500`)
+  const data = await request(`/table/${TID}/record?take=500&fieldKeyType=name`)
   const records = (data.records ?? []).map(normalize)
   // 按创建时间倒序
   return records.sort((a, b) => {
@@ -117,13 +117,13 @@ export async function findUserByEmail(email) {
 
 /** 通过 recordId 查找单个用户 */
 export async function findUserById(uid) {
-  const data = await request(`/table/${TID}/record/${uid}`)
+  const data = await request(`/table/${TID}/record/${uid}?fieldKeyType=name`)
   return normalize(data)
 }
 
 /** 创建用户记录 */
 export async function createUser(fields) {
-  const data = await request(`/table/${TID}/record`, {
+  const data = await request(`/table/${TID}/record?fieldKeyType=name`, {
     method: 'POST',
     body: JSON.stringify({ records: [{ fields }] }),
   })
@@ -133,7 +133,7 @@ export async function createUser(fields) {
 
 /** 更新用户记录（仅传需要修改的字段） */
 export async function updateUser(recordId, fields) {
-  await request(`/table/${TID}/record`, {
+  await request(`/table/${TID}/record?fieldKeyType=name`, {
     method: 'PATCH',
     body: JSON.stringify({ records: [{ id: recordId, fields }] }),
   })

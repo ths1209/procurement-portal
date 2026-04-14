@@ -17,9 +17,10 @@ import {
 import { listUsers } from '../lib/teable'
 import { sendNotify } from '../lib/notify'
 
-const FY      = getFiscalYear()
-const ACCENT  = '#2563EB'
-const OKR_TID = import.meta.env.VITE_TEABLE_OKR_TABLE_ID
+const FY       = getFiscalYear()
+const ACCENT   = '#2563EB'   // 年度 OKR — 蓝色
+const Q_ACCENT = '#7C3AED'   // 季度 OKR — 紫色
+const OKR_TID  = import.meta.env.VITE_TEABLE_OKR_TABLE_ID
 
 // AI 调用配置（与 aiSummary.js 保持一致）
 const AI_BASE  = (import.meta.env.VITE_AI_API_BASE  ?? '').replace(/\/$/, '')
@@ -252,7 +253,7 @@ export default function OKRReport() {
 
 // ── 进度总览（OKR 中心视图，跨周期对比） ──────────────────────────────────────────
 function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
-  const { profile } = useAuth()
+  const { profile, isAdmin } = useOKRAuth()
   const [typeFilter,    setTypeFilter]    = useState('')
   const [periodCount,   setPeriodCount]   = useState('all')  // 'all'|'3'|'6'|'single'
   const [singlePeriodId, setSinglePeriodId] = useState('')
@@ -313,9 +314,9 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
   const items = useMemo(() => {
     const r = []
     if (!typeFilter || typeFilter === 'annual')
-      annualOkr.objectives.forEach((obj, oi) => r.push({ typeLabel: '年度', oi, obj }))
+      annualOkr.objectives.forEach((obj, oi) => r.push({ typeLabel: '年度', oi, obj, typeColor: ACCENT }))
     if (!typeFilter || typeFilter === 'quarterly')
-      quarterlyOkr.objectives.forEach((obj, oi) => r.push({ typeLabel: `${FY.qk} 季度`, oi, obj }))
+      quarterlyOkr.objectives.forEach((obj, oi) => r.push({ typeLabel: `${FY.qk} 季度`, oi, obj, typeColor: Q_ACCENT }))
     return r
   }, [annualOkr, quarterlyOkr, typeFilter])
 
@@ -371,10 +372,10 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium shrink-0" style={{ color: 'var(--muted)' }}>显示周期</span>
           <div className="flex gap-1">
-            {[['all', '全量'], ['6', '近 6 期'], ['3', '近 3 期']].map(([v, l]) => (
+            {[['all', '全量'], ['6', '近6期'], ['3', '近3期']].map(([v, l]) => (
               <button key={v}
                 onClick={() => { setPeriodCount(v); setSinglePeriodId('') }}
-                className="press px-3 py-1 rounded-lg text-[11px] font-medium"
+                className="press px-3 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap"
                 style={periodCount === v
                   ? { background: ACCENT, color: '#fff' }
                   : { background: 'var(--surface2)', color: 'var(--muted)', border: '1px solid var(--border)' }}>
@@ -396,22 +397,24 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
           </select>
         </div>
 
-        {/* 催办按钮 */}
+        {/* 催办按钮（仅管理员） */}
         <div className="flex items-center gap-2 ml-auto">
           <span className="text-[11px]" style={{ color: 'var(--muted)' }}>
             {filteredPeriods.length} 个周期
           </span>
-          <button
-            onClick={() => openUrgeModal()}
-            disabled={loadingUrge || periods.length === 0}
-            className="press flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-semibold disabled:opacity-50"
-            style={{ background: 'rgba(239,68,68,0.08)', color: '#DC2626',
-              border: '1px solid rgba(239,68,68,0.2)' }}>
-            {loadingUrge
-              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              : <Bell className="w-3.5 h-3.5" />}
-            一键催办
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => openUrgeModal()}
+              disabled={loadingUrge || periods.length === 0}
+              className="press flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-semibold disabled:opacity-50 whitespace-nowrap"
+              style={{ background: 'rgba(239,68,68,0.08)', color: '#DC2626',
+                border: '1px solid rgba(239,68,68,0.2)' }}>
+              {loadingUrge
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <Bell className="w-3.5 h-3.5" />}
+              一键催办
+            </button>
+          )}
         </div>
       </div>
 
@@ -423,8 +426,9 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
       )}
 
       {/* OKR 目标卡片 */}
-      {items.map(({ typeLabel, oi, obj }) => {
+      {items.map(({ typeLabel, oi, obj, typeColor }) => {
         const isExpanded = expandedObjs.has(obj.id)
+        const hexAlpha = typeColor === Q_ACCENT ? 'rgba(124,58,237,0.1)' : 'rgba(37,99,235,0.1)'
         // 计算总体完成率（跨周期最高状态）
         const stats = (() => {
           let total = 0, done = 0
@@ -437,19 +441,20 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
         })()
 
         return (
-          <div key={obj.id} className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+          <div key={obj.id} className="rounded-2xl overflow-hidden"
+            style={{ border: `1px solid var(--border)`, borderTopWidth: 2, borderTopColor: typeColor }}>
             {/* Objective header */}
             <button className="w-full flex items-center gap-3 px-5 py-4 text-left press"
               style={{ background: 'var(--surface)' }} onClick={() => toggleObj(obj.id)}>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-md shrink-0"
-                style={{ background: 'rgba(37,99,235,0.1)', color: ACCENT }}>
+                style={{ background: hexAlpha, color: typeColor }}>
                 {typeLabel} O{oi + 1}
               </span>
               <span className="flex-1 text-[13px] font-semibold" style={{ color: 'var(--text)' }}>{obj.objective}</span>
               <div className="flex items-center gap-2.5 shrink-0">
                 <div className="w-20 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
                   <div className="h-full rounded-full transition-all"
-                    style={{ width: `${stats.pct}%`, background: 'linear-gradient(90deg,#2563EB,#10B981)' }} />
+                    style={{ width: `${stats.pct}%`, background: `linear-gradient(90deg,${typeColor},#10B981)` }} />
                 </div>
                 <span className="text-[11px] font-bold w-7 text-right"
                   style={{ color: stats.pct > 0 ? '#059669' : 'var(--muted)' }}>{stats.pct}%</span>
@@ -465,6 +470,7 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
                   <div className="px-5 py-8 text-center text-sm" style={{ color: 'var(--muted)' }}>暂无 KR</div>
                 ) : obj.krs.map((kr, ki) => (
                   <KRSection key={kr.id} kr={kr} ki={ki}
+                    typeColor={typeColor}
                     filteredPeriods={filteredPeriods} allReports={allReports}
                     historyEntries={krHistories[kr.id]}
                     historyExpanded={expandedHist.has(kr.id)}
@@ -472,7 +478,7 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
                     onToggleHistory={() => toggleKRHistory(kr.id)}
                     onCellClick={(periodId, group, periodLabel) =>
                       setDetailModal({ periodId, group, kr, periodLabel })}
-                    onUrgeGroup={openUrgeModal}
+                    onUrgeGroup={isAdmin ? openUrgeModal : null}
                   />
                 ))}
               </div>
@@ -501,7 +507,7 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
 }
 
 // ── KR 行：周期×组 对比表格 ───────────────────────────────────────────────────
-function KRSection({ kr, ki, filteredPeriods, allReports, historyEntries, historyExpanded, historyLoading, onToggleHistory, onCellClick, onUrgeGroup }) {
+function KRSection({ kr, ki, filteredPeriods, allReports, historyEntries, historyExpanded, historyLoading, onToggleHistory, onCellClick, onUrgeGroup, typeColor = ACCENT }) {
   const FIELD_LABELS = { status: '状态', content: '进展' }
   const fmtTs = ts => {
     if (!ts) return ''
@@ -580,8 +586,8 @@ function KRSection({ kr, ki, filteredPeriods, allReports, historyEntries, histor
         <div className="mt-2.5 ml-7">
           <button onClick={onToggleHistory}
             className="press flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-lg"
-            style={{ background: historyExpanded ? 'rgba(37,99,235,0.06)' : 'transparent',
-              color: historyExpanded ? ACCENT : 'var(--muted)', border: `1px solid ${historyExpanded ? 'rgba(37,99,235,0.15)' : 'transparent'}` }}>
+            style={{ background: historyExpanded ? `${typeColor}10` : 'transparent',
+              color: historyExpanded ? typeColor : 'var(--muted)', border: `1px solid ${historyExpanded ? `${typeColor}26` : 'transparent'}` }}>
             <ScrollText className="w-3 h-3" />
             {historyLoading ? '加载中…' : `变更记录${historyEntries ? `（${historyEntries.length}）` : ''}`}
             {historyExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
@@ -597,7 +603,7 @@ function KRSection({ kr, ki, filteredPeriods, allReports, historyEntries, histor
                   <div className="flex items-center gap-2 mb-1">
                     <span className="font-semibold" style={{ color: 'var(--text)' }}>{e.user}</span>
                     <span className="px-1.5 py-px rounded text-[9px] font-bold"
-                      style={{ background: 'rgba(37,99,235,0.08)', color: ACCENT }}>{e.group}</span>
+                      style={{ background: `${typeColor}14`, color: typeColor }}>{e.group}</span>
                     <span style={{ color: 'var(--muted)' }}>{e.periodLabel}</span>
                     <span className="ml-auto font-mono text-[9px]" style={{ color: 'var(--muted)' }}>{fmtTs(e.ts)}</span>
                   </div>
@@ -694,9 +700,11 @@ function CellDetailModal({ periodId, group, kr, periodLabel, allReports, onClose
 
 // ── 填写报告（草稿 / 提交双状态） ─────────────────────────────────────────────
 function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPeriod, onPeriodChange, myGroup, profile, onSaved }) {
-  const [draft,    setDraft]    = useState({})
-  const [saving,   setSaving]   = useState(false)
-  const [saved,    setSaved]    = useState(false)
+  const [draft,            setDraft]            = useState({})
+  const [saving,           setSaving]           = useState(false)
+  const [saved,            setSaved]            = useState(false)
+  const [localAttachments, setLocalAttachments] = useState([])
+  const fileInputRef = useRef(null)
 
   // 读取当前已保存数据（含 _meta）
   const savedData = useMemo(() =>
@@ -721,6 +729,40 @@ function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPer
   }, [savedData])
 
   useEffect(() => { setDraft(krData) }, [selectedPeriod, myGroup, JSON.stringify(krData)])
+  useEffect(() => { setLocalAttachments(savedData._meta?.attachments || []) }, [selectedPeriod, myGroup])
+
+  const MAX_ATTACH_SIZE = 2 * 1024 * 1024  // 2 MB per file
+  const MAX_ATTACH_COUNT = 3
+
+  function handleFileAdd(e) {
+    const files = Array.from(e.target.files)
+    e.target.value = ''
+    for (const file of files) {
+      if (file.size > MAX_ATTACH_SIZE) { alert(`「${file.name}」超过 2MB，请压缩后重试`); continue }
+      const reader = new FileReader()
+      reader.onload = ev => {
+        setLocalAttachments(prev => {
+          if (prev.length >= MAX_ATTACH_COUNT) { alert(`最多上传 ${MAX_ATTACH_COUNT} 个附件`); return prev }
+          return [...prev, { name: file.name, type: file.type, size: file.size, data: ev.target.result }]
+        })
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  function removeAttachment(idx) {
+    setLocalAttachments(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  function downloadAttachment(att) {
+    const a = document.createElement('a'); a.href = att.data; a.download = att.name; a.click()
+  }
+
+  function fmtFileSize(bytes) {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  }
 
   const allKRs = useMemo(() => {
     const r = []
@@ -742,6 +784,7 @@ function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPer
         ...draft,
         _meta: {
           status: newSubmitStatus,
+          attachments: localAttachments,
           ...(newSubmitStatus === 'submitted'
             ? { submittedAt: new Date().toISOString(), submittedBy: profile?.displayName || '' }
             : {}),
@@ -854,8 +897,10 @@ function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPer
               <div key={kr.id}>
                 {showHead && (
                   <div className="flex items-center gap-2 mt-2 mb-1.5">
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md"
-                      style={{ background: 'rgba(37,99,235,0.08)', color: ACCENT }}>{typeLabel} O{oi + 1}</span>
+                    {(() => { const tc = typeLabel === '年度' ? ACCENT : Q_ACCENT; return (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md"
+                        style={{ background: `${tc}14`, color: tc }}>{typeLabel} O{oi + 1}</span>
+                    )})()}
                     <span className="text-[13px] font-semibold" style={{ color: 'var(--text)' }}>{obj.objective}</span>
                   </div>
                 )}
@@ -900,6 +945,56 @@ function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPer
               </div>
             )
           })}
+
+          {/* 附件 */}
+          <div className="card p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <FileText className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--muted)' }} />
+              <span className="text-[13px] font-semibold" style={{ color: 'var(--text)' }}>支撑附件</span>
+              <span className="text-[11px]" style={{ color: 'var(--muted)' }}>
+                最多 {MAX_ATTACH_COUNT} 个，单文件 ≤ 2MB
+              </span>
+              {!isSubmitted && (
+                <>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={localAttachments.length >= MAX_ATTACH_COUNT}
+                    className="press ml-auto flex items-center gap-1 px-3 py-1.5 rounded-xl text-[12px] font-semibold disabled:opacity-40"
+                    style={{ background: 'rgba(37,99,235,0.08)', color: ACCENT, border: '1px solid rgba(37,99,235,0.18)' }}>
+                    <Plus className="w-3 h-3" />添加附件
+                  </button>
+                  <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileAdd} />
+                </>
+              )}
+            </div>
+
+            {localAttachments.length === 0 ? (
+              <p className="text-[12px] px-1" style={{ color: 'var(--muted)' }}>
+                {isSubmitted ? '无附件' : '点击「添加附件」上传佐证文件（Excel / PDF / 图片等）'}
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {localAttachments.map((att, i) => (
+                  <div key={i} className="flex items-center gap-2.5 px-3 py-2 rounded-xl"
+                    style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+                    <FileText className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--muted)' }} />
+                    <span className="text-[12px] flex-1 truncate" style={{ color: 'var(--text)' }}>{att.name}</span>
+                    <span className="text-[11px] font-mono shrink-0" style={{ color: 'var(--muted)' }}>
+                      {fmtFileSize(att.size)}
+                    </span>
+                    <button onClick={() => downloadAttachment(att)}
+                      className="press text-[11px] px-2 py-0.5 rounded-lg"
+                      style={{ background: 'rgba(37,99,235,0.08)', color: ACCENT }}>下载</button>
+                    {!isSubmitted && (
+                      <button onClick={() => removeAttachment(i)}
+                        className="press text-[11px] px-2 py-0.5 rounded-lg"
+                        style={{ background: 'rgba(244,63,94,0.07)', color: '#E11D48' }}>删除</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -1120,6 +1215,8 @@ function SetupPanel({ profile, onSaved }) {
   const byUser     = profile?.displayName || ''
   const currentKey = subTab === 'annual' ? FY.annualKey : `quarterly-${qkSel}`
   const QK_OPTS    = useMemo(() => [`${FY.fy}-Q1`,`${FY.fy}-Q2`,`${FY.fy}-Q3`,`${FY.fy}-Q4`], [])
+  const setupColor = subTab === 'annual' ? ACCENT : Q_ACCENT
+  const setupAlpha = subTab === 'annual' ? 'rgba(37,99,235,0.1)' : 'rgba(124,58,237,0.1)'
 
   useEffect(() => { setLoading(true); getOKRSetup(currentKey).then(setOkrData).finally(() => setLoading(false)) }, [currentKey])
 
@@ -1181,7 +1278,7 @@ function SetupPanel({ profile, onSaved }) {
         )}
         <button onClick={() => setObjModal({ editId: null, text: '' })}
           className="press flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-semibold text-white ml-auto"
-          style={{ background: ACCENT }}><Plus className="w-3.5 h-3.5" />添加目标</button>
+          style={{ background: setupColor }}><Plus className="w-3.5 h-3.5" />添加目标</button>
       </div>
 
       {loading ? (
@@ -1200,7 +1297,7 @@ function SetupPanel({ profile, onSaved }) {
           {okrData.objectives.map((obj, oi) => (
             <div key={obj.id} className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
               <div className="flex items-center gap-3 px-4 py-3.5" style={{ background: 'var(--surface)' }}>
-                <span className="text-[10px] font-bold px-2.5 py-1 rounded-lg shrink-0" style={{ background: 'rgba(37,99,235,0.1)', color: ACCENT }}>O{oi+1}</span>
+                <span className="text-[10px] font-bold px-2.5 py-1 rounded-lg shrink-0" style={{ background: setupAlpha, color: setupColor }}>O{oi+1}</span>
                 <span className="flex-1 text-[13px] font-semibold" style={{ color: 'var(--text)' }}>{obj.objective}</span>
                 <button onClick={() => setObjModal({ editId: obj.id, text: obj.objective })} className="press p-1.5 rounded-lg" style={{ color: 'var(--muted)' }}><Edit2 className="w-3.5 h-3.5" /></button>
                 <button onClick={() => delObj(obj.id)} className="press p-1.5 rounded-lg" style={{ color: '#E11D48' }}><Trash2 className="w-3.5 h-3.5" /></button>

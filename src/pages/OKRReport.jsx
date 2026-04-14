@@ -178,7 +178,7 @@ export default function OKRReport() {
 
   const TABS = [
     { key: 'overview', label: '进度总览', icon: BarChart3,  show: true },
-    { key: 'report',   label: '填写报告', icon: FileText,   show: !isAdmin && !!myGroup },
+    { key: 'report',   label: '填写报告', icon: FileText,   show: !!myGroup },
     { key: 'ai',       label: 'AI 报告',  icon: Bot,        show: true },
     { key: 'setup',    label: 'OKR 设置', icon: Settings,   show: isAdmin },
     { key: 'periods',  label: '周期管理', icon: Calendar,   show: isAdmin },
@@ -274,6 +274,11 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
   const [detailModal,   setDetailModal]   = useState(null)   // { periodId, group, kr, periodLabel }
   const [urgeModal,     setUrgeModal]     = useState(null)   // { period, people, targetGroups }
   const [loadingUrge,   setLoadingUrge]   = useState(false)
+  const [allContentExpanded, setAllContentExpanded] = useState(new Set())
+
+  function toggleExpandAll(objId) {
+    setAllContentExpanded(prev => { const s = new Set(prev); s.has(objId) ? s.delete(objId) : s.add(objId); return s })
+  }
 
   const filteredPeriods = useMemo(() => {
     if (periodCount === '3') return periods.slice(0, 3)
@@ -454,26 +459,39 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
           <div key={obj.id} className="rounded-2xl overflow-hidden"
             style={{ border: '1px solid var(--border)' }}>
             {/* Objective header */}
-            <button className="w-full flex items-center gap-3 px-5 py-4 text-left press"
+            <div className="w-full flex items-center gap-3 px-5 py-4 text-left press cursor-pointer select-none"
               style={{ background: `linear-gradient(135deg, ${typeColor}08 0%, var(--surface) 60%)` }}
-              onClick={() => toggleObj(obj.id)}>
+              role="button" tabIndex={0}
+              onClick={() => toggleObj(obj.id)}
+              onKeyDown={e => e.key === 'Enter' && toggleObj(obj.id)}>
               <span className="text-[10px] font-bold px-2.5 py-1 rounded-lg shrink-0"
                 style={{ background: hexAlpha, color: typeColor }}>
                 {typeLabel} O{oi + 1}
               </span>
               <span className="flex-1 text-[13px] font-semibold" style={{ color: 'var(--text)' }}>{obj.objective}</span>
-              <div className="flex items-center gap-2.5 shrink-0">
+              <div className="flex items-center gap-2.5 shrink-0" onClick={e => e.stopPropagation()}>
+                {isExpanded && (
+                  <button
+                    onClick={() => toggleExpandAll(obj.id)}
+                    className="press flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold"
+                    style={{
+                      background: allContentExpanded.has(obj.id) ? `${typeColor}18` : typeColor,
+                      color: allContentExpanded.has(obj.id) ? typeColor : '#fff',
+                    }}>
+                    {allContentExpanded.has(obj.id) ? '收起内容' : '展开内容'}
+                  </button>
+                )}
                 <div className="w-20 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
                   <div className="h-full rounded-full transition-all"
                     style={{ width: `${stats.pct}%`, background: `linear-gradient(90deg,${typeColor},#10B981)` }} />
                 </div>
                 <span className="text-[11px] font-bold w-7 text-right"
                   style={{ color: stats.pct > 0 ? '#059669' : 'var(--muted)' }}>{stats.pct}%</span>
-                {isExpanded
-                  ? <ChevronDown className="w-4 h-4" style={{ color: 'var(--muted)' }} />
-                  : <ChevronRight className="w-4 h-4" style={{ color: 'var(--muted)' }} />}
               </div>
-            </button>
+              {isExpanded
+                ? <ChevronDown className="w-4 h-4 shrink-0" style={{ color: 'var(--muted)' }} />
+                : <ChevronRight className="w-4 h-4 shrink-0" style={{ color: 'var(--muted)' }} />}
+            </div>
 
             {isExpanded && (
               <div style={{ borderTop: '1px solid var(--border)' }}>
@@ -492,6 +510,7 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
                     onCellClick={(periodId, group, periodLabel) =>
                       setDetailModal({ periodId, group, kr, periodLabel })}
                     onUrgeGroup={isAdmin ? openUrgeModal : null}
+                    showAll={allContentExpanded.has(obj.id)}
                   />
                 ))}
                 {/* 每个O末尾的其他工作行 */}
@@ -507,6 +526,7 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
                   onCellClick={(periodId, group, periodLabel) =>
                     setDetailModal({ periodId, group, kr: { id: otherKey(obj.id), desc: '其他工作' }, periodLabel })}
                   onUrgeGroup={null}
+                  showAll={allContentExpanded.has(obj.id)}
                 />
               </div>
             )}
@@ -534,7 +554,7 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
 }
 
 // ── KR 行：周期×组 对比表格 ───────────────────────────────────────────────────
-function KRSection({ kr, ki, filteredPeriods, allReports, historyEntries, historyExpanded, historyLoading, onToggleHistory, onCellClick, onUrgeGroup, typeColor = ACCENT }) {
+function KRSection({ kr, ki, filteredPeriods, allReports, historyEntries, historyExpanded, historyLoading, onToggleHistory, onCellClick, onUrgeGroup, typeColor = ACCENT, showAll = false }) {
   const FIELD_LABELS = { status: '状态', content: '进展' }
   const fmtTs = ts => {
     if (!ts) return ''
@@ -542,33 +562,71 @@ function KRSection({ kr, ki, filteredPeriods, allReports, historyEntries, histor
     return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
   }
 
+  const isOther = typeColor === OTHER_CLR
+
+  // 周期展开状态（由 O 级 showAll 或 KR 级一键展开驱动）
+  const [expandedPeriods, setExpandedPeriods] = useState(new Set())
+
+  // O 级"展开内容" / "收起内容" 驱动 KR 内所有周期
+  useEffect(() => {
+    setExpandedPeriods(showAll ? new Set(filteredPeriods.map(p => p.id)) : new Set())
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showAll])
+
+  const isAllExpanded = filteredPeriods.length > 0 && filteredPeriods.every(p => expandedPeriods.has(p.id))
+
+  function togglePeriod(periodId) {
+    setExpandedPeriods(prev => { const s = new Set(prev); s.has(periodId) ? s.delete(periodId) : s.add(periodId); return s })
+  }
+
+  function toggleAllKR() {
+    setExpandedPeriods(isAllExpanded ? new Set() : new Set(filteredPeriods.map(p => p.id)))
+  }
+
   return (
-    <div className="border-b last:border-b-0" style={{ borderColor: 'var(--border)' }}>
+    <div className="border-b last:border-b-0"
+      style={{ borderColor: 'var(--border)', background: isOther ? 'rgba(100,116,139,0.03)' : 'transparent' }}>
       <div className="px-5 py-3.5">
-        {/* KR 描述 */}
+        {/* KR 描述 + KR 级展开按钮 */}
         <div className="flex items-start gap-2 mb-3">
           <span className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold shrink-0 mt-0.5"
-            style={{ background: 'rgba(245,158,11,0.15)', color: '#B45309' }}>{ki + 1}</span>
+            style={{
+              background: isOther ? 'rgba(100,116,139,0.15)' : 'rgba(245,158,11,0.15)',
+              color: isOther ? OTHER_CLR : '#B45309',
+            }}>
+            {isOther ? '补' : ki + 1}
+          </span>
           <span className="text-[13px] flex-1 leading-relaxed font-medium" style={{ color: 'var(--text)' }}>{kr.desc}</span>
+          {/* KR 级一键展开（纯色填充） */}
+          {filteredPeriods.length > 0 && (
+            <button onClick={toggleAllKR}
+              className="press shrink-0 flex items-center gap-0.5 px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all"
+              style={{
+                background: isAllExpanded ? `${typeColor}18` : typeColor,
+                color: isAllExpanded ? typeColor : '#fff',
+              }}>
+              {isAllExpanded
+                ? <><ChevronDown className="w-3 h-3" />收起</>
+                : <><ChevronRight className="w-3 h-3" />展开</>}
+            </button>
+          )}
         </div>
 
         {/* 周期×组 对比表 */}
         {filteredPeriods.length > 0 && (
           <div className="overflow-x-auto ml-7">
-            <table className="w-full text-[11px]" style={{ minWidth: `${OKR_GROUPS.length * 90 + 140}px` }}>
+            <table className="w-full text-[11px]" style={{ minWidth: `${OKR_GROUPS.length * 90 + 180}px` }}>
               <thead>
                 <tr>
-                  <th className="text-left pb-2.5 pr-3 font-semibold text-[10px] w-36 shrink-0"
+                  <th className="text-left pb-2.5 pr-3 font-semibold text-[10px] w-44 shrink-0"
                     style={{ color: 'var(--text)', opacity: 0.5 }}>汇报周期</th>
                   {OKR_GROUPS.map(g => (
                     <th key={g} className="pb-2.5 px-1 font-semibold text-[10px] text-center" style={{ color: 'var(--text)', opacity: 0.55 }}>
                       <div className="flex flex-col items-center gap-0.5">
                         <span>{g.replace('采购', '')}</span>
                         {onUrgeGroup && (
-                          <button onClick={() => onUrgeGroup(g)}
-                            title={`催办${g}`}
-                            className="press opacity-30 hover:opacity-80 transition-opacity"
-                            style={{ color: '#DC2626' }}>
+                          <button onClick={() => onUrgeGroup(g)} title={`催办${g}`}
+                            className="press opacity-30 hover:opacity-80 transition-opacity" style={{ color: '#DC2626' }}>
                             <Bell className="w-2.5 h-2.5" />
                           </button>
                         )}
@@ -578,35 +636,78 @@ function KRSection({ kr, ki, filteredPeriods, allReports, historyEntries, histor
                 </tr>
               </thead>
               <tbody>
-                {filteredPeriods.map((period, pi) => (
-                  <tr key={period.id} className="group/row transition-colors"
-                    style={{ borderRadius: 8 }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                    <td className="py-2 pr-3 align-middle rounded-l-lg">
-                      <span className="text-[10px] font-mono" style={{ color: 'var(--text)', opacity: 0.6 }}>
-                        {period.start.slice(5)} · {period.label.slice(0, 12)}
-                      </span>
-                    </td>
-                    {OKR_GROUPS.map(g => {
-                      const rep    = allReports[period.id]?.[g]?.[kr.id]
-                      const status = rep?.status || 'empty'
-                      const content = rep?.content || ''
-                      return (
-                        <td key={g} className="py-1.5 px-1 text-center align-middle">
-                          <CellTooltip content={content}>
-                            <button
-                              className="press inline-block rounded-md transition-all"
-                              style={{ opacity: status === 'empty' ? 0.5 : 1 }}
-                              onClick={() => onCellClick(period.id, g, period.label)}>
-                              <StatusBadge status={status} size="xs" />
-                            </button>
-                          </CellTooltip>
+                {filteredPeriods.map((period) => {
+                  const isPeriodExpanded = expandedPeriods.has(period.id)
+                  return [
+                    <tr key={period.id} className="group/row transition-colors"
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
+                      onMouseLeave={e => e.currentTarget.style.background = isPeriodExpanded ? `${typeColor}05` : 'transparent'}>
+                      <td className="py-2 pr-3 align-middle rounded-l-lg">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-mono" style={{ color: 'var(--text)', opacity: 0.6 }}>
+                            {period.start.slice(5)} · {period.label.slice(0, 12)}
+                          </span>
+                          {/* 周期展开按钮（纯色填充） */}
+                          <button onClick={() => togglePeriod(period.id)}
+                            className="press flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold transition-all"
+                            style={{
+                              background: isPeriodExpanded ? typeColor : `${typeColor}14`,
+                              color: isPeriodExpanded ? '#fff' : typeColor,
+                            }}>
+                            {isPeriodExpanded
+                              ? <ChevronDown className="w-2.5 h-2.5" />
+                              : <ChevronRight className="w-2.5 h-2.5" />}
+                          </button>
+                        </div>
+                      </td>
+                      {OKR_GROUPS.map(g => {
+                        const rep    = allReports[period.id]?.[g]?.[kr.id]
+                        const status = rep?.status || 'empty'
+                        const content = rep?.content || ''
+                        return (
+                          <td key={g} className="py-1.5 px-1 text-center align-middle">
+                            <CellTooltip content={content}>
+                              <button
+                                className="press inline-block rounded-md transition-all"
+                                style={{ opacity: status === 'empty' ? 0.5 : 1 }}
+                                onClick={() => onCellClick(period.id, g, period.label)}>
+                                <StatusBadge status={status} size="xs" />
+                              </button>
+                            </CellTooltip>
+                          </td>
+                        )
+                      })}
+                    </tr>,
+                    isPeriodExpanded && (
+                      <tr key={`${period.id}-content`} style={{ background: `${typeColor}05` }}>
+                        <td colSpan={OKR_GROUPS.length + 1}
+                          style={{ paddingTop: 4, paddingBottom: 10, paddingLeft: 0, paddingRight: 4 }}>
+                          <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${OKR_GROUPS.length}, 1fr)` }}>
+                            {OKR_GROUPS.map(g => {
+                              const rep    = allReports[period.id]?.[g]?.[kr.id]
+                              const status = rep?.status || 'empty'
+                              return (
+                                <div key={g} className="rounded-lg p-2.5"
+                                  style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+                                  <div className="flex items-center gap-1.5 mb-1.5">
+                                    <span className="text-[10px] font-bold" style={{ color: typeColor }}>
+                                      {g.replace('采购', '')}
+                                    </span>
+                                    <StatusBadge status={status} size="xs" />
+                                  </div>
+                                  <p className="text-[11px] leading-relaxed whitespace-pre-wrap"
+                                    style={{ color: rep?.content ? 'var(--text)' : 'var(--muted)', minHeight: 28 }}>
+                                    {rep?.content || '暂无进展'}
+                                  </p>
+                                </div>
+                              )
+                            })}
+                          </div>
                         </td>
-                      )
-                    })}
-                  </tr>
-                ))}
+                      </tr>
+                    ),
+                  ]
+                })}
               </tbody>
             </table>
           </div>

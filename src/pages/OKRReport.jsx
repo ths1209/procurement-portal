@@ -960,7 +960,6 @@ function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPer
                   style={{
                     opacity: isSubmitted ? 0.8 : 1,
                     pointerEvents: isSubmitted ? 'none' : 'auto',
-                    borderLeft: `3px solid ${tc}`,
                   }}>
                   <div className="flex items-start gap-2">
                     <span className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold shrink-0 mt-0.5"

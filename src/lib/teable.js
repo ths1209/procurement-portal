@@ -83,13 +83,26 @@ const USER_EXTRA_FIELDS = [
 export async function ensureUserFields() {
   try {
     const existing = await request(`/table/${TID}/field`)
-    const names = new Set(existing.map(f => f.name))
+    const fieldMap = Object.fromEntries(existing.map(f => [f.name, f]))
     for (const def of USER_EXTRA_FIELDS) {
-      if (!names.has(def.name)) {
+      if (!fieldMap[def.name]) {
+        // 字段不存在，创建
         await request(`/table/${TID}/field`, {
           method: 'POST',
           body: JSON.stringify(def),
         }).catch(e => console.warn(`[Teable] 创建字段 "${def.name}" 失败:`, e.message))
+      } else if (def.type === 'singleSelect' && def.options?.choices) {
+        // 字段已存在，检查是否缺少选项，有则追加
+        const fld = fieldMap[def.name]
+        const existingNames = new Set((fld.options?.choices ?? []).map(c => c.name))
+        const missing = def.options.choices.filter(c => !existingNames.has(c.name))
+        if (missing.length > 0) {
+          const allChoices = [...(fld.options?.choices ?? []), ...missing]
+          await request(`/table/${TID}/field/${fld.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ options: { choices: allChoices } }),
+          }).catch(e => console.warn(`[Teable] 补全字段 "${def.name}" 选项失败:`, e.message))
+        }
       }
     }
   } catch(e) {

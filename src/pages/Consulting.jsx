@@ -1331,6 +1331,7 @@ export default function Consulting() {
           </div>
         )}
         {!loading && pageRows.map((row, i) => {
+          const hColor = row.handler ? (handlerColors[row.handler] ?? null) : null
           return (
           <div key={row._id}
             className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] cursor-pointer transition-colors"
@@ -1338,6 +1339,7 @@ export default function Consulting() {
               display: 'grid', gridTemplateColumns: GRID_TPL,
               padding: '7px 12px', gap: '0 8px', alignItems: 'center',
               borderTop: i === 0 ? 'none' : '1px solid var(--border)',
+              borderLeft: hColor ? `3px solid ${hColor}` : '3px solid transparent',
             }}
             onClick={() => setView(row)}>
             <span className="text-xs truncate pr-1" style={{ color: 'var(--text)', minWidth: 0 }}>{row.question}</span>

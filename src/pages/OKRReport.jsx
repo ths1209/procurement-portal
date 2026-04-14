@@ -12,6 +12,7 @@ import {
   getPeriods, savePeriods,
   getAllPeriodsReports, saveGroupReport,
   appendHistory, getHistory,
+  getKRAttachments, uploadKRAttachment, deleteKRAttachment,
   uid, OKR_GROUPS, getFiscalYear,
 } from '../lib/teableOKR'
 import { listUsers } from '../lib/teable'
@@ -442,7 +443,7 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
 
         return (
           <div key={obj.id} className="rounded-2xl overflow-hidden"
-            style={{ border: `1px solid var(--border)`, borderTopWidth: 2, borderTopColor: typeColor }}>
+            style={{ border: '1px solid var(--border)' }}>
             {/* Objective header */}
             <button className="w-full flex items-center gap-3 px-5 py-4 text-left press"
               style={{ background: 'var(--surface)' }} onClick={() => toggleObj(obj.id)}>
@@ -700,11 +701,13 @@ function CellDetailModal({ periodId, group, kr, periodLabel, allReports, onClose
 
 // ── 填写报告（草稿 / 提交双状态） ─────────────────────────────────────────────
 function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPeriod, onPeriodChange, myGroup, profile, onSaved }) {
-  const [draft,            setDraft]            = useState({})
-  const [saving,           setSaving]           = useState(false)
-  const [saved,            setSaved]            = useState(false)
-  const [localAttachments, setLocalAttachments] = useState([])
-  const fileInputRef = useRef(null)
+  const [draft,       setDraft]       = useState({})
+  const [saving,      setSaving]      = useState(false)
+  const [saved,       setSaved]       = useState(false)
+  const [krAtts,      setKrAtts]      = useState({})   // { krId: [{ token, displayName, size, presignedUrl, mimetype }] }
+  const [uploadingKr, setUploadingKr] = useState(null) // krId
+  const [deletingToken, setDeletingToken] = useState(null)
+  const fileInputRefs = useRef({})  // { krId: <input el> }
 
   // 读取当前已保存数据（含 _meta）
   const savedData = useMemo(() =>
@@ -729,36 +732,52 @@ function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPer
   }, [savedData])
 
   useEffect(() => { setDraft(krData) }, [selectedPeriod, myGroup, JSON.stringify(krData)])
-  useEffect(() => { setLocalAttachments(savedData._meta?.attachments || []) }, [selectedPeriod, myGroup])
 
-  const MAX_ATTACH_SIZE = 2 * 1024 * 1024  // 2 MB per file
-  const MAX_ATTACH_COUNT = 3
+  // 加载当前组-周期附件
+  useEffect(() => {
+    if (!selectedPeriod || !myGroup) return
+    getKRAttachments(myGroup, selectedPeriod)
+      .then(atts => setKrAtts(groupByKr(atts)))
+      .catch(() => {})
+  }, [selectedPeriod, myGroup])
 
-  function handleFileAdd(e) {
-    const files = Array.from(e.target.files)
-    e.target.value = ''
-    for (const file of files) {
-      if (file.size > MAX_ATTACH_SIZE) { alert(`「${file.name}」超过 2MB，请压缩后重试`); continue }
-      const reader = new FileReader()
-      reader.onload = ev => {
-        setLocalAttachments(prev => {
-          if (prev.length >= MAX_ATTACH_COUNT) { alert(`最多上传 ${MAX_ATTACH_COUNT} 个附件`); return prev }
-          return [...prev, { name: file.name, type: file.type, size: file.size, data: ev.target.result }]
-        })
-      }
-      reader.readAsDataURL(file)
+  function groupByKr(atts) {
+    const m = {}
+    for (const a of atts) {
+      if (!m[a.krId]) m[a.krId] = []
+      m[a.krId].push(a)
     }
+    return m
   }
 
-  function removeAttachment(idx) {
-    setLocalAttachments(prev => prev.filter((_, i) => i !== idx))
+  async function handleKRFileUpload(krId, files) {
+    if (!selectedPeriod) { alert('请先选择汇报周期'); return }
+    setUploadingKr(krId)
+    try {
+      let latest
+      for (const file of files) {
+        if (file.size > 20 * 1024 * 1024) { alert(`「${file.name}」超过 20MB`); continue }
+        latest = await uploadKRAttachment(myGroup, selectedPeriod, krId, file)
+      }
+      if (latest) setKrAtts(groupByKr(latest))
+    } catch (e) { alert('上传失败：' + e.message) }
+    finally { setUploadingKr(null) }
   }
 
-  function downloadAttachment(att) {
-    const a = document.createElement('a'); a.href = att.data; a.download = att.name; a.click()
+  async function handleKRFileDelete(token) {
+    if (!selectedPeriod) return
+    setDeletingToken(token)
+    try {
+      const allAtts = Object.values(krAtts).flat()
+      const keepTokens = allAtts.filter(a => a.token !== token).map(a => a.token)
+      const latest = await deleteKRAttachment(myGroup, selectedPeriod, keepTokens)
+      if (latest) setKrAtts(groupByKr(latest))
+    } catch (e) { alert('删除失败：' + e.message) }
+    finally { setDeletingToken(null) }
   }
 
   function fmtFileSize(bytes) {
+    if (!bytes) return ''
     if (bytes < 1024) return `${bytes} B`
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`
@@ -784,7 +803,6 @@ function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPer
         ...draft,
         _meta: {
           status: newSubmitStatus,
-          attachments: localAttachments,
           ...(newSubmitStatus === 'submitted'
             ? { submittedAt: new Date().toISOString(), submittedBy: profile?.displayName || '' }
             : {}),
@@ -833,7 +851,7 @@ function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPer
                 <Check className="w-3 h-3" />已提交
               </span>
               <button onClick={() => handleSave('draft')} disabled={saving}
-                className="press px-3.5 py-2 rounded-xl text-[13px] font-semibold disabled:opacity-50"
+                className="press px-2.5 py-1 rounded-lg text-[11px] font-semibold disabled:opacity-50"
                 style={{ background: 'var(--surface2)', color: 'var(--muted)', border: '1px solid var(--border)' }}>
                 重新编辑
               </button>
@@ -936,65 +954,68 @@ function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPer
                       })}
                     </div>
                   </div>
+                  {/* 进展文本 */}
                   <div className="ml-7">
                     <textarea value={d.content || ''} onChange={e => update(kr.id, 'content', e.target.value)}
                       className="field text-[13px]" rows={3} style={{ resize: 'vertical' }}
                       placeholder={`描述 ${myGroup} 本周期在此 KR 的进展…`} />
                   </div>
+
+                  {/* 逐 KR 附件区 */}
+                  <div className="ml-7">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="text-[11px] font-medium" style={{ color: 'var(--muted)' }}>支撑附件</span>
+                      {!isSubmitted && (
+                        <>
+                          <button
+                            onClick={() => fileInputRefs.current[kr.id]?.click()}
+                            disabled={!!uploadingKr}
+                            className="press flex items-center gap-0.5 px-2 py-0.5 rounded-lg text-[10px] font-semibold disabled:opacity-40"
+                            style={{ background: 'rgba(37,99,235,0.07)', color: ACCENT, border: '1px solid rgba(37,99,235,0.15)' }}>
+                            {uploadingKr === kr.id
+                              ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                              : <Plus className="w-2.5 h-2.5" />}
+                            上传
+                          </button>
+                          <input
+                            ref={el => { fileInputRefs.current[kr.id] = el }}
+                            type="file" multiple hidden
+                            onChange={e => { handleKRFileUpload(kr.id, Array.from(e.target.files)); e.target.value = '' }} />
+                        </>
+                      )}
+                    </div>
+                    {(krAtts[kr.id] || []).length > 0 && (
+                      <div className="space-y-1">
+                        {(krAtts[kr.id] || []).map(att => (
+                          <div key={att.token} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px]"
+                            style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+                            <FileText className="w-3 h-3 shrink-0" style={{ color: 'var(--muted)' }} />
+                            <span className="flex-1 truncate" style={{ color: 'var(--text)' }}>{att.displayName}</span>
+                            <span className="font-mono shrink-0 text-[10px]" style={{ color: 'var(--muted)' }}>
+                              {fmtFileSize(att.size)}
+                            </span>
+                            {att.presignedUrl && (
+                              <a href={att.presignedUrl} target="_blank" rel="noreferrer"
+                                className="press px-1.5 py-0.5 rounded text-[10px]"
+                                style={{ background: 'rgba(37,99,235,0.07)', color: ACCENT }}>下载</a>
+                            )}
+                            {!isSubmitted && (
+                              <button onClick={() => handleKRFileDelete(att.token)}
+                                disabled={deletingToken === att.token}
+                                className="press px-1.5 py-0.5 rounded text-[10px] disabled:opacity-40"
+                                style={{ background: 'rgba(244,63,94,0.07)', color: '#E11D48' }}>
+                                {deletingToken === att.token ? '…' : '删除'}
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )
           })}
-
-          {/* 附件 */}
-          <div className="card p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <FileText className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--muted)' }} />
-              <span className="text-[13px] font-semibold" style={{ color: 'var(--text)' }}>支撑附件</span>
-              <span className="text-[11px]" style={{ color: 'var(--muted)' }}>
-                最多 {MAX_ATTACH_COUNT} 个，单文件 ≤ 2MB
-              </span>
-              {!isSubmitted && (
-                <>
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={localAttachments.length >= MAX_ATTACH_COUNT}
-                    className="press ml-auto flex items-center gap-1 px-3 py-1.5 rounded-xl text-[12px] font-semibold disabled:opacity-40"
-                    style={{ background: 'rgba(37,99,235,0.08)', color: ACCENT, border: '1px solid rgba(37,99,235,0.18)' }}>
-                    <Plus className="w-3 h-3" />添加附件
-                  </button>
-                  <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileAdd} />
-                </>
-              )}
-            </div>
-
-            {localAttachments.length === 0 ? (
-              <p className="text-[12px] px-1" style={{ color: 'var(--muted)' }}>
-                {isSubmitted ? '无附件' : '点击「添加附件」上传佐证文件（Excel / PDF / 图片等）'}
-              </p>
-            ) : (
-              <div className="space-y-1.5">
-                {localAttachments.map((att, i) => (
-                  <div key={i} className="flex items-center gap-2.5 px-3 py-2 rounded-xl"
-                    style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
-                    <FileText className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--muted)' }} />
-                    <span className="text-[12px] flex-1 truncate" style={{ color: 'var(--text)' }}>{att.name}</span>
-                    <span className="text-[11px] font-mono shrink-0" style={{ color: 'var(--muted)' }}>
-                      {fmtFileSize(att.size)}
-                    </span>
-                    <button onClick={() => downloadAttachment(att)}
-                      className="press text-[11px] px-2 py-0.5 rounded-lg"
-                      style={{ background: 'rgba(37,99,235,0.08)', color: ACCENT }}>下载</button>
-                    {!isSubmitted && (
-                      <button onClick={() => removeAttachment(i)}
-                        className="press text-[11px] px-2 py-0.5 rounded-lg"
-                        style={{ background: 'rgba(244,63,94,0.07)', color: '#E11D48' }}>删除</button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       )}
     </div>

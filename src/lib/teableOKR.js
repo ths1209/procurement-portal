@@ -40,6 +40,7 @@ const OKR_FIELDS = [
   { name: 'payload',    type: 'longText'       },
   { name: 'updatedBy',  type: 'singleLineText' },
   { name: 'updatedAt',  type: 'singleLineText' },
+  { name: 'attachment', type: 'attachment'     },
 ]
 
 export async function ensureOKRFields() {
@@ -236,6 +237,98 @@ export async function getHistory({ group, periodId } = {}) {
     } catch {}
   }
   return entries.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''))
+}
+
+// ── 附件上传（同百宝箱模式，上传到 okr_report 记录的 attachment 字段） ────────
+
+let _attachFid = null
+
+async function getAttachFid() {
+  if (_attachFid) return _attachFid
+  const fields = await req(`/table/${TID}/field`)
+  const f = (fields ?? []).find(x => x.name === 'attachment' && x.type === 'attachment')
+  if (!f) {
+    const created = await req(`/table/${TID}/field`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'attachment', type: 'attachment' }),
+    })
+    _attachFid = created.id
+  } else {
+    _attachFid = f.id
+  }
+  return _attachFid
+}
+
+/** 获取（或创建）指定组-周期的 okr_report 记录 ID */
+async function getReportRecordId(group, periodId) {
+  const all = await loadAll(true)
+  const existing = all.find(r => r.recordType === 'okr_report' && r.group === group && r.typeKey === periodId)
+  if (existing) return existing._id
+  const data = await req(`/table/${TID}/record?fieldKeyType=name`, {
+    method: 'POST',
+    body: JSON.stringify({ records: [{ fields: {
+      recordType: 'okr_report', typeKey: periodId, group,
+      payload: '{}', updatedAt: new Date().toISOString(),
+    }}] }),
+  })
+  invalidate()
+  return data.records?.[0]?.id
+}
+
+/** 获取某组-周期的所有附件（已按 krId__ 前缀打包）
+ *  返回 [{ token, name, displayName, size, mimetype, presignedUrl, krId }] */
+export async function getKRAttachments(group, periodId) {
+  const all = await loadAll()
+  const rec = all.find(r => r.recordType === 'okr_report' && r.group === group && r.typeKey === periodId)
+  const atts = Array.isArray(rec?.attachment) ? rec.attachment : []
+  return atts.map(a => {
+    const idx = (a.name || '').indexOf('__')
+    const krId       = idx >= 0 ? a.name.slice(0, idx)  : ''
+    const displayName = idx >= 0 ? a.name.slice(idx + 2) : a.name
+    return { ...a, krId, displayName }
+  })
+}
+
+/** 上传一个文件到指定 KR，文件名自动前缀 krId__
+ *  成功后返回该组-周期最新附件列表（已解析） */
+export async function uploadKRAttachment(group, periodId, krId, file) {
+  if (!TID) throw new Error('未配置 VITE_TEABLE_OKR_TABLE_ID')
+  const [recordId, fieldId] = await Promise.all([
+    getReportRecordId(group, periodId),
+    getAttachFid(),
+  ])
+  const renamedFile = new File([file], `${krId}__${file.name}`, { type: file.type })
+  const form = new FormData()
+  form.append('file', renamedFile)
+  const res = await fetch(`${API}/api/table/${TID}/record/${recordId}/${fieldId}/uploadAttachment`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${TOKEN}` },
+    body: form,
+  })
+  if (!res.ok) {
+    const b = await res.json().catch(() => ({}))
+    throw new Error(b.message ?? `附件上传失败 ${res.status}`)
+  }
+  invalidate()
+  return getKRAttachments(group, periodId)
+}
+
+/** 删除指定附件（保留其余 token）
+ *  keepTokens: 需要保留的 token 数组 */
+export async function deleteKRAttachment(group, periodId, keepTokens) {
+  if (!TID) return
+  const all = await loadAll(true)
+  const rec = all.find(r => r.recordType === 'okr_report' && r.group === group && r.typeKey === periodId)
+  if (!rec) return
+  const fieldId = await getAttachFid()
+  await req(`/table/${TID}/record`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      records: [{ id: rec._id, fields: { [fieldId]: keepTokens.map(t => ({ token: t })) } }],
+    }),
+  })
+  invalidate()
+  return getKRAttachments(group, periodId)
 }
 
 // ── 工具函数 ──────────────────────────────────────────────────────────────────

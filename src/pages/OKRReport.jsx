@@ -472,7 +472,7 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
               <div className="flex items-center gap-2.5 shrink-0" onClick={e => e.stopPropagation()}>
                 {isExpanded && (
                   <button
-                    onClick={() => toggleExpandAll(obj.id)}
+                    onClick={e => { e.stopPropagation(); toggleExpandAll(obj.id) }}
                     className="press flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold"
                     style={{
                       background: allContentExpanded.has(obj.id) ? `${typeColor}18` : typeColor,

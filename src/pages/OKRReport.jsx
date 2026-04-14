@@ -18,10 +18,12 @@ import {
 import { listUsers } from '../lib/teable'
 import { sendNotify } from '../lib/notify'
 
-const FY       = getFiscalYear()
-const ACCENT   = '#2563EB'   // 年度 OKR — 蓝色
-const Q_ACCENT = '#7C3AED'   // 季度 OKR — 紫色
-const OKR_TID  = import.meta.env.VITE_TEABLE_OKR_TABLE_ID
+const FY        = getFiscalYear()
+const ACCENT    = '#2563EB'   // 年度 OKR — 蓝色
+const Q_ACCENT  = '#7C3AED'   // 季度 OKR — 紫色
+const OKR_TID   = import.meta.env.VITE_TEABLE_OKR_TABLE_ID
+const OTHER_KEY = 'other'     // 其他工作的 payload key（也用于附件文件名前缀）
+const OTHER_CLR = '#64748B'   // 其他工作配色 — 灰蓝
 
 // AI 调用配置（与 aiSummary.js 保持一致）
 const AI_BASE  = (import.meta.env.VITE_AI_API_BASE  ?? '').replace(/\/$/, '')
@@ -496,6 +498,35 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
         )
       })}
 
+      {/* 其他工作汇总 */}
+      {filteredPeriods.length > 0 && (
+        <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+          <div className="flex items-center gap-3 px-5 py-4"
+            style={{ background: `linear-gradient(135deg, rgba(100,116,139,0.06) 0%, var(--surface) 60%)` }}>
+            <span className="text-[10px] font-bold px-2.5 py-1 rounded-lg shrink-0"
+              style={{ background: 'rgba(100,116,139,0.12)', color: OTHER_CLR }}>其他</span>
+            <span className="flex-1 text-[13px] font-semibold" style={{ color: 'var(--text)' }}>其他工作</span>
+            <span className="text-[11px]" style={{ color: 'var(--muted)' }}>各组自行填写的补充工作项</span>
+          </div>
+          <div style={{ borderTop: '1px solid var(--border)' }}>
+            <KRSection
+              kr={{ id: OTHER_KEY, desc: '其他工作（各组本期补充）' }}
+              ki={0}
+              typeColor={OTHER_CLR}
+              filteredPeriods={filteredPeriods}
+              allReports={allReports}
+              historyEntries={krHistories[OTHER_KEY]}
+              historyExpanded={expandedHist.has(OTHER_KEY)}
+              historyLoading={loadingHist === OTHER_KEY}
+              onToggleHistory={() => toggleKRHistory(OTHER_KEY)}
+              onCellClick={(periodId, group, periodLabel) =>
+                setDetailModal({ periodId, group, kr: { id: OTHER_KEY, desc: '其他工作' }, periodLabel })}
+              onUrgeGroup={null}
+            />
+          </div>
+        </div>
+      )}
+
       {detailModal && (
         <CellDetailModal
           {...detailModal}
@@ -833,7 +864,9 @@ function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPer
     if (!selectedPeriod) { alert('请先选择汇报周期'); return }
     setSaving(true)
     try {
-      const changes = buildChangeDiff(krData, draft, allKRs)
+      const changes = buildChangeDiff(krData, draft, [
+        ...allKRs, { kr: { id: OTHER_KEY, desc: '其他工作' } },
+      ])
       const payload = {
         ...draft,
         _meta: {
@@ -1053,6 +1086,98 @@ function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPer
               </div>
             )
           })}
+
+          {/* 其他工作 */}
+          <div>
+            <div className="flex items-center gap-2 mt-3 mb-1.5 px-1">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md"
+                style={{ background: 'rgba(100,116,139,0.12)', color: OTHER_CLR }}>其他</span>
+              <span className="text-[13px] font-semibold" style={{ color: 'var(--text)' }}>其他工作</span>
+            </div>
+            <div className="card p-4 space-y-3"
+              style={{ opacity: isSubmitted ? 0.8 : 1, pointerEvents: isSubmitted ? 'none' : 'auto' }}>
+              <div className="flex items-start gap-2">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold shrink-0 mt-0.5"
+                  style={{ background: 'rgba(100,116,139,0.12)', color: OTHER_CLR }}>补</span>
+                <span className="text-[13px] flex-1 leading-relaxed font-medium" style={{ color: 'var(--text)' }}>
+                  本期其他工作事项
+                </span>
+              </div>
+              <div className="flex items-center gap-3 ml-7">
+                <span className="text-xs font-medium shrink-0" style={{ color: 'var(--muted)' }}>完成状态</span>
+                <div className="flex gap-2">
+                  {['notstart', 'progress', 'done'].map(s => {
+                    const cfg = STATUS_CFG[s]; const active = (draft[OTHER_KEY] || {}).status === s
+                    return (
+                      <button key={s} onClick={() => update(OTHER_KEY, 'status', s)}
+                        className="press px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all"
+                        style={active
+                          ? { background: cfg.solid, color: cfg.text, boxShadow: `0 2px 8px ${cfg.solid}55` }
+                          : { background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', opacity: 0.6 }}>
+                        {cfg.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="ml-7">
+                <textarea value={(draft[OTHER_KEY] || {}).content || ''} onChange={e => update(OTHER_KEY, 'content', e.target.value)}
+                  className="field text-[13px]" rows={3} style={{ resize: 'vertical' }}
+                  placeholder={`描述 ${myGroup} 本周期的其他工作内容…`} />
+              </div>
+              {/* 附件 */}
+              <div className="ml-7">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-[11px] font-semibold" style={{ color: 'var(--text)', opacity: 0.65 }}>支撑附件</span>
+                  {!isSubmitted && (
+                    <>
+                      <button
+                        onClick={() => fileInputRefs.current[OTHER_KEY]?.click()}
+                        disabled={!!uploadingKr}
+                        className="press flex items-center gap-0.5 px-2 py-0.5 rounded-lg text-[10px] font-semibold disabled:opacity-40"
+                        style={{ background: 'rgba(100,116,139,0.07)', color: OTHER_CLR, border: '1px solid rgba(100,116,139,0.2)' }}>
+                        {uploadingKr === OTHER_KEY
+                          ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                          : <Plus className="w-2.5 h-2.5" />}
+                        上传
+                      </button>
+                      <input
+                        ref={el => { fileInputRefs.current[OTHER_KEY] = el }}
+                        type="file" multiple hidden
+                        onChange={e => { handleKRFileUpload(OTHER_KEY, Array.from(e.target.files)); e.target.value = '' }} />
+                    </>
+                  )}
+                </div>
+                {(krAtts[OTHER_KEY] || []).length > 0 && (
+                  <div className="space-y-1">
+                    {(krAtts[OTHER_KEY] || []).map(att => (
+                      <div key={att.token} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px]"
+                        style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+                        <FileText className="w-3 h-3 shrink-0" style={{ color: 'var(--muted)' }} />
+                        <span className="flex-1 truncate" style={{ color: 'var(--text)' }}>{att.displayName}</span>
+                        <span className="font-mono shrink-0 text-[10px]" style={{ color: 'var(--muted)' }}>
+                          {fmtFileSize(att.size)}
+                        </span>
+                        {att.presignedUrl && (
+                          <a href={att.presignedUrl} target="_blank" rel="noreferrer"
+                            className="press px-1.5 py-0.5 rounded text-[10px]"
+                            style={{ background: 'rgba(100,116,139,0.07)', color: OTHER_CLR }}>下载</a>
+                        )}
+                        {!isSubmitted && (
+                          <button onClick={() => handleKRFileDelete(att.token)}
+                            disabled={deletingToken === att.token}
+                            className="press px-1.5 py-0.5 rounded text-[10px] disabled:opacity-40"
+                            style={{ background: 'rgba(244,63,94,0.07)', color: '#E11D48' }}>
+                            {deletingToken === att.token ? '…' : '删除'}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

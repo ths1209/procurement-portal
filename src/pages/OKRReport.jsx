@@ -36,6 +36,13 @@ const OR_MODELS = [
   'meta-llama/llama-3.2-3b-instruct:free',
 ]
 
+function fmtFileSize(bytes) {
+  if (!bytes) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
 // ── 状态配色（纯色填充）──────────────────────────────────────────────────────────
 const STATUS_CFG = {
   notstart: { label: '未开始', solid: '#DC2626', text: '#fff' },
@@ -359,10 +366,10 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
           <div className="flex gap-1">
             {[['', '全部'], ['annual', '年度'], ['quarterly', '季度']].map(([v, l]) => (
               <button key={v} onClick={() => setTypeFilter(v)}
-                className="press px-3 py-1 rounded-lg text-[11px] font-medium"
+                className="press px-3 py-1 rounded-lg text-[11px] font-semibold"
                 style={typeFilter === v
                   ? { background: ACCENT, color: '#fff' }
-                  : { background: 'var(--surface2)', color: 'var(--muted)', border: '1px solid var(--border)' }}>
+                  : { background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', opacity: 0.6 }}>
                 {l}
               </button>
             ))}
@@ -376,10 +383,10 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
             {[['all', '全量'], ['6', '近6期'], ['3', '近3期']].map(([v, l]) => (
               <button key={v}
                 onClick={() => { setPeriodCount(v); setSinglePeriodId('') }}
-                className="press px-3 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap"
+                className="press px-3 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap"
                 style={periodCount === v
                   ? { background: ACCENT, color: '#fff' }
-                  : { background: 'var(--surface2)', color: 'var(--muted)', border: '1px solid var(--border)' }}>
+                  : { background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', opacity: 0.6 }}>
                 {l}
               </button>
             ))}
@@ -446,8 +453,9 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
             style={{ border: '1px solid var(--border)' }}>
             {/* Objective header */}
             <button className="w-full flex items-center gap-3 px-5 py-4 text-left press"
-              style={{ background: 'var(--surface)' }} onClick={() => toggleObj(obj.id)}>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md shrink-0"
+              style={{ background: `linear-gradient(135deg, ${typeColor}08 0%, var(--surface) 60%)` }}
+              onClick={() => toggleObj(obj.id)}>
+              <span className="text-[10px] font-bold px-2.5 py-1 rounded-lg shrink-0"
                 style={{ background: hexAlpha, color: typeColor }}>
                 {typeLabel} O{oi + 1}
               </span>
@@ -532,10 +540,10 @@ function KRSection({ kr, ki, filteredPeriods, allReports, historyEntries, histor
             <table className="w-full text-[11px]" style={{ minWidth: `${OKR_GROUPS.length * 90 + 140}px` }}>
               <thead>
                 <tr>
-                  <th className="text-left pb-2 pr-3 font-semibold text-[10px] w-36 shrink-0"
-                    style={{ color: 'var(--muted)' }}>汇报周期</th>
+                  <th className="text-left pb-2.5 pr-3 font-semibold text-[10px] w-36 shrink-0"
+                    style={{ color: 'var(--text)', opacity: 0.5 }}>汇报周期</th>
                   {OKR_GROUPS.map(g => (
-                    <th key={g} className="pb-2 px-1 font-semibold text-[10px] text-center" style={{ color: 'var(--muted)' }}>
+                    <th key={g} className="pb-2.5 px-1 font-semibold text-[10px] text-center" style={{ color: 'var(--text)', opacity: 0.55 }}>
                       <div className="flex flex-col items-center gap-0.5">
                         <span>{g.replace('采购', '')}</span>
                         {onUrgeGroup && (
@@ -553,9 +561,12 @@ function KRSection({ kr, ki, filteredPeriods, allReports, historyEntries, histor
               </thead>
               <tbody>
                 {filteredPeriods.map((period, pi) => (
-                  <tr key={period.id} className="group/row">
-                    <td className="py-1.5 pr-3 align-middle">
-                      <span className="text-[10px] font-mono" style={{ color: 'var(--muted)' }}>
+                  <tr key={period.id} className="group/row transition-colors"
+                    style={{ borderRadius: 8 }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                    <td className="py-2 pr-3 align-middle rounded-l-lg">
+                      <span className="text-[10px] font-mono" style={{ color: 'var(--text)', opacity: 0.6 }}>
                         {period.start.slice(5)} · {period.label.slice(0, 12)}
                       </span>
                     </td>
@@ -636,12 +647,19 @@ function KRSection({ kr, ki, filteredPeriods, allReports, historyEntries, histor
 function CellDetailModal({ periodId, group, kr, periodLabel, allReports, onClose }) {
   const rep    = allReports[periodId]?.[group]?.[kr.id]
   const status = rep?.status || 'empty'
-  const [entries, setEntries] = useState(null)
+  const [entries,    setEntries]    = useState(null)
+  const [detailAtts, setDetailAtts] = useState(null)
 
   useEffect(() => {
     getHistory({ group, periodId }).then(all => {
       setEntries(all.filter(e => e.changes?.some(c => c.krId === kr.id)))
     }).catch(() => setEntries([]))
+  }, [group, periodId, kr.id])
+
+  useEffect(() => {
+    getKRAttachments(group, periodId)
+      .then(atts => setDetailAtts(atts.filter(a => a.krId === kr.id)))
+      .catch(() => setDetailAtts([]))
   }, [group, periodId, kr.id])
 
   const fmtTs = ts => {
@@ -668,6 +686,30 @@ function CellDetailModal({ periodId, group, kr, periodLabel, allReports, onClose
             {rep?.content || '暂无进展描述'}
           </p>
         </div>
+        {/* 附件 */}
+        {detailAtts !== null && detailAtts.length > 0 && (
+          <div>
+            <p className="text-[11px] font-semibold mb-1.5" style={{ color: 'var(--muted)' }}>支撑附件</p>
+            <div className="space-y-1">
+              {detailAtts.map(att => (
+                <div key={att.token} className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-[11px]"
+                  style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+                  <FileText className="w-3 h-3 shrink-0" style={{ color: ACCENT }} />
+                  <span className="flex-1 truncate font-medium" style={{ color: 'var(--text)' }}>{att.displayName}</span>
+                  <span className="font-mono text-[10px] shrink-0" style={{ color: 'var(--muted)' }}>
+                    {fmtFileSize(att.size)}
+                  </span>
+                  {att.presignedUrl && (
+                    <a href={att.presignedUrl} target="_blank" rel="noreferrer"
+                      className="press px-2 py-0.5 rounded-lg text-[10px] font-semibold"
+                      style={{ background: `${ACCENT}14`, color: ACCENT }}>下载</a>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div>
           <p className="text-[11px] font-semibold mb-2" style={{ color: 'var(--muted)' }}>变更记录</p>
           {entries === null ? (
@@ -776,13 +818,6 @@ function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPer
     finally { setDeletingToken(null) }
   }
 
-  function fmtFileSize(bytes) {
-    if (!bytes) return ''
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
-    return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-  }
-
   const allKRs = useMemo(() => {
     const r = []
     annualOkr.objectives.forEach((obj, oi) => obj.krs.forEach(kr => r.push({ typeLabel: '年度', oi, obj, kr })))
@@ -852,7 +887,7 @@ function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPer
               </span>
               <button onClick={() => handleSave('draft')} disabled={saving}
                 className="press px-2.5 py-1 rounded-lg text-[11px] font-semibold disabled:opacity-50"
-                style={{ background: 'var(--surface2)', color: 'var(--muted)', border: '1px solid var(--border)' }}>
+                style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', opacity: 0.75 }}>
                 重新编辑
               </button>
             </>
@@ -860,7 +895,7 @@ function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPer
             <>
               <button onClick={() => handleSave('draft')} disabled={saving || !selectedPeriod}
                 className="press flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-semibold disabled:opacity-50"
-                style={{ background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)' }}>
+                style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', opacity: 0.75 }}>
                 <Save className="w-3.5 h-3.5" />{saving ? '…' : '保存草稿'}
               </button>
               <button onClick={() => handleSave('submitted')} disabled={saving || !selectedPeriod}
@@ -911,19 +946,22 @@ function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPer
             const showHead = idx === 0 || allKRs[idx - 1].obj.id !== obj.id
             const d    = draft[kr.id] || {}
             const prev = prevReport[kr.id] || {}
+            const tc   = typeLabel === '年度' ? ACCENT : Q_ACCENT
             return (
               <div key={kr.id}>
                 {showHead && (
-                  <div className="flex items-center gap-2 mt-2 mb-1.5">
-                    {(() => { const tc = typeLabel === '年度' ? ACCENT : Q_ACCENT; return (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md"
-                        style={{ background: `${tc}14`, color: tc }}>{typeLabel} O{oi + 1}</span>
-                    )})()}
+                  <div className="flex items-center gap-2 mt-3 mb-1.5 px-1">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md"
+                      style={{ background: `${tc}18`, color: tc }}>{typeLabel} O{oi + 1}</span>
                     <span className="text-[13px] font-semibold" style={{ color: 'var(--text)' }}>{obj.objective}</span>
                   </div>
                 )}
                 <div className="card p-4 space-y-3"
-                  style={{ opacity: isSubmitted ? 0.75 : 1, pointerEvents: isSubmitted ? 'none' : 'auto' }}>
+                  style={{
+                    opacity: isSubmitted ? 0.8 : 1,
+                    pointerEvents: isSubmitted ? 'none' : 'auto',
+                    borderLeft: `3px solid ${tc}`,
+                  }}>
                   <div className="flex items-start gap-2">
                     <span className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold shrink-0 mt-0.5"
                       style={{ background: 'rgba(245,158,11,0.15)', color: '#B45309' }}>KR</span>
@@ -946,8 +984,8 @@ function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPer
                           <button key={s} onClick={() => update(kr.id, 'status', s)}
                             className="press px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all"
                             style={active
-                              ? { background: cfg.solid, color: cfg.text }
-                              : { background: 'var(--surface2)', color: 'var(--muted)', border: '1px solid var(--border)' }}>
+                              ? { background: cfg.solid, color: cfg.text, boxShadow: `0 2px 8px ${cfg.solid}55` }
+                              : { background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', opacity: 0.6 }}>
                             {cfg.label}
                           </button>
                         )
@@ -964,7 +1002,7 @@ function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPer
                   {/* 逐 KR 附件区 */}
                   <div className="ml-7">
                     <div className="flex items-center gap-2 mb-1.5">
-                      <span className="text-[11px] font-medium" style={{ color: 'var(--muted)' }}>支撑附件</span>
+                      <span className="text-[11px] font-semibold" style={{ color: 'var(--text)', opacity: 0.65 }}>支撑附件</span>
                       {!isSubmitted && (
                         <>
                           <button

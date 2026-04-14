@@ -680,8 +680,9 @@ function KRSection({ kr, ki, filteredPeriods, allReports, historyEntries, histor
                     </tr>,
                     isPeriodExpanded && (
                       <tr key={`${period.id}-content`} style={{ background: `${typeColor}05` }}>
-                        <td colSpan={OKR_GROUPS.length + 1}
-                          style={{ paddingTop: 4, paddingBottom: 10, paddingLeft: 0, paddingRight: 4 }}>
+                        <td />
+                        <td colSpan={OKR_GROUPS.length}
+                          style={{ paddingTop: 4, paddingBottom: 10, paddingLeft: 4, paddingRight: 4 }}>
                           <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${OKR_GROUPS.length}, 1fr)` }}>
                             {OKR_GROUPS.map(g => {
                               const rep    = allReports[period.id]?.[g]?.[kr.id]

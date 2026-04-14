@@ -47,21 +47,31 @@ function StatusBadge({ status, size = 'sm' }) {
   return <span className={cls} style={{ background: cfg.solid, color: cfg.text }}>{cfg.label}</span>
 }
 
-// ── 简易 hover tooltip ─────────────────────────────────────────────────────────
+// ── hover tooltip（portal 渲染，避免被 overflow 裁剪） ──────────────────────────
 function CellTooltip({ content, children }) {
-  const [visible, setVisible] = useState(false)
+  const [pos, setPos] = useState(null)
   if (!content) return children
   return (
-    <div className="relative" onMouseEnter={() => setVisible(true)} onMouseLeave={() => setVisible(false)}>
+    <div className="inline-block"
+      onMouseEnter={e => {
+        const r = e.currentTarget.getBoundingClientRect()
+        setPos({ x: r.left + r.width / 2, y: r.top })
+      }}
+      onMouseLeave={() => setPos(null)}>
       {children}
-      {visible && (
-        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-52 p-2.5 rounded-xl shadow-lg pointer-events-none text-[11px] leading-relaxed"
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
+      {pos && createPortal(
+        <div className="fixed pointer-events-none text-[11px] leading-relaxed z-[9999]"
+          style={{
+            left: pos.x, top: pos.y - 8,
+            transform: 'translate(-50%, -100%)',
+            maxWidth: 220, padding: '8px 10px',
+            background: 'var(--surface)', border: '1px solid var(--border)',
+            borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.14)',
+            color: 'var(--text)',
+          }}>
           {content}
-          <div className="absolute top-full left-1/2 -translate-x-1/2 w-2 h-2 rotate-45 -mt-1"
-            style={{ background: 'var(--surface)', borderRight: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }} />
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
@@ -954,9 +964,6 @@ function AIReportPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
             {generating ? '生成中…' : `生成${mode === 'monthly' ? '月报' : '年报'}`}
           </button>
         </div>
-        <p className="text-[11px]" style={{ color: 'var(--muted)' }}>
-          优先调用内部 AI 接口，失败时自动切换至 OpenRouter 公共模型
-        </p>
       </div>
 
       {generating && (

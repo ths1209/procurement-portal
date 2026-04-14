@@ -230,7 +230,9 @@ export async function getHistory({ group, periodId } = {}) {
   for (const rec of recs) {
     try {
       const parsed = JSON.parse(rec.payload)
-      entries.push(...(Array.isArray(parsed) ? parsed : [parsed]))
+      const arr = Array.isArray(parsed) ? parsed : [parsed]
+      // 从 Teable 字段补充 group（向后兼容旧数据）
+      entries.push(...arr.map(e => ({ group: rec.group, ...e })))
     } catch {}
   }
   return entries.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''))

@@ -615,10 +615,10 @@ function KRSection({ kr, ki, filteredPeriods, allReports, historyEntries, histor
         {/* 周期×组 对比表 */}
         {filteredPeriods.length > 0 && (
           <div className="overflow-x-auto ml-7">
-            <table className="w-full text-[11px]" style={{ minWidth: `${OKR_GROUPS.length * 90 + 180}px` }}>
+            <table className="w-full text-[11px]" style={{ minWidth: `${OKR_GROUPS.length * 90 + 240}px` }}>
               <thead>
                 <tr>
-                  <th className="text-left pb-2.5 pr-3 font-semibold text-[10px] w-44 shrink-0"
+                  <th className="text-left pb-2.5 pr-3 font-semibold text-[10px] w-56 shrink-0"
                     style={{ color: 'var(--text)', opacity: 0.5 }}>汇报周期</th>
                   {OKR_GROUPS.map(g => (
                     <th key={g} className="pb-2.5 px-1 font-semibold text-[10px] text-center" style={{ color: 'var(--text)', opacity: 0.55 }}>
@@ -644,8 +644,8 @@ function KRSection({ kr, ki, filteredPeriods, allReports, historyEntries, histor
                       onMouseLeave={e => e.currentTarget.style.background = isPeriodExpanded ? `${typeColor}05` : 'transparent'}>
                       <td className="py-2 pr-3 align-middle rounded-l-lg">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] font-mono" style={{ color: 'var(--text)', opacity: 0.6 }}>
-                            {period.start.slice(5)} · {period.label.slice(0, 12)}
+                          <span className="text-[10px] font-mono whitespace-nowrap" style={{ color: 'var(--text)', opacity: 0.6 }}>
+                            {period.label}
                           </span>
                           {/* 周期展开按钮（纯色填充） */}
                           <button onClick={() => togglePeriod(period.id)}

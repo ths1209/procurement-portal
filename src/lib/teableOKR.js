@@ -173,12 +173,75 @@ export async function saveGroupReport(group, periodId, data, byUser) {
   invalidate()
 }
 
+// ── 全周期报告（用于总览） ──────────────────────────────────────────────────────
+// 返回 { periodId: { group: { krId: { status, content } } } }
+export async function getAllPeriodsReports() {
+  const all = await loadAll()
+  const result = {}
+  for (const rec of all) {
+    if (rec.recordType === 'okr_report') {
+      const pid = rec.typeKey
+      if (!result[pid]) result[pid] = {}
+      try { result[pid][rec.group] = JSON.parse(rec.payload) } catch { result[pid][rec.group] = {} }
+    }
+  }
+  return result
+}
+
+// ── 填写日志 ───────────────────────────────────────────────────────────────────
+// payload: JSON 数组，每条条目：{ ts, user, periodId, periodLabel, changes: [...] }
+
+export async function appendHistory(periodId, group, entry) {
+  if (!TID) return
+  const key = `history-${periodId}-${group}`
+  const all = await loadAll(true)
+  const existing = all.find(r => r.recordType === 'okr_history' && r.typeKey === key)
+  let entries = []
+  if (existing?.payload) {
+    try { entries = JSON.parse(existing.payload) } catch {}
+  }
+  entries.push(entry)
+  const payload = JSON.stringify(entries)
+  const fields = { payload, updatedBy: entry.user, updatedAt: new Date().toISOString() }
+  if (existing) {
+    await req(`/table/${TID}/record?fieldKeyType=name`, {
+      method: 'PATCH',
+      body: JSON.stringify({ records: [{ id: existing._id, fields }] }),
+    })
+  } else {
+    await req(`/table/${TID}/record?fieldKeyType=name`, {
+      method: 'POST',
+      body: JSON.stringify({ records: [{ fields: { recordType: 'okr_history', typeKey: key, group, ...fields } }] }),
+    })
+  }
+  invalidate()
+}
+
+// 返回所有日志条目（倒序），可按 group / periodId 过滤
+export async function getHistory({ group, periodId } = {}) {
+  const all = await loadAll()
+  const recs = all.filter(r => {
+    if (r.recordType !== 'okr_history') return false
+    if (group && r.group !== group) return false
+    if (periodId && !r.typeKey.includes(periodId)) return false
+    return true
+  })
+  const entries = []
+  for (const rec of recs) {
+    try {
+      const parsed = JSON.parse(rec.payload)
+      entries.push(...(Array.isArray(parsed) ? parsed : [parsed]))
+    } catch {}
+  }
+  return entries.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''))
+}
+
 // ── 工具函数 ──────────────────────────────────────────────────────────────────
 export function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 }
 
-export const OKR_GROUPS = ['采购一组', '采购二组', '采购三组', '采购四组', '采购五组']
+export const OKR_GROUPS = ['采购一组', '采购二组', '采购三组', '采购四组', '采购运营组']
 
 export function getFiscalYear(date) {
   const d = date ? new Date(date) : new Date()

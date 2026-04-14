@@ -255,7 +255,7 @@ function AnalyticsSection({ data, loading }) {
 
 const DEPT_OPTS      = ['', '采购运营组', '集团采购部']
 const GROUP_OPTS     = ['', '运营分析组', '采购稽核组', '供应商管理组']
-const OKR_GROUP_OPTS = ['采购一组', '采购二组', '采购三组', '采购四组', '采购五组']
+const OKR_GROUP_OPTS = ['采购一组', '采购二组', '采购三组', '采购四组', '采购运营组']
 const DEPT_CFG = {
   '采购运营组': { bg:'rgba(99,102,241,0.1)',  color:'#6366F1' },
   '集团采购部': { bg:'rgba(14,165,233,0.1)',  color:'#0284C7' },

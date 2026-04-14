@@ -75,7 +75,7 @@ const USER_EXTRA_FIELDS = [
   ]}},
   { name: 'okrGroup', type: 'singleSelect', options: { choices: [
     { name: '采购一组' }, { name: '采购二组' }, { name: '采购三组' },
-    { name: '采购四组' }, { name: '采购五组' },
+    { name: '采购四组' }, { name: '采购运营组' },
   ]}},
   { name: 'jobId', type: 'singleLineText' },
 ]

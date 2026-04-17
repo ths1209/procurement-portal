@@ -552,13 +552,14 @@ function HandlerChart({ rows, handlerColors }) {
 
 /* ── 新建/编辑弹窗 ── */
 function EditModal({ row, onClose, onSave }) {
+  const { profile } = useAuth()
   const [form, setForm] = useState(row ? {
     [C.question]: row.question, [C.answer]: row.answer,
     [C.qType]: row.qType, [C.qStage]: row.qStage,
     [C.contact]: row.contact, [C.dept]: row.dept, [C.handler]: row.handler,
     [C.acceptDate]: fmtDate(row.acceptDate), [C.solveDate]: fmtDate(row.solveDate),
     [C.status]: row.status, [C.month]: row.month,
-  } : { ...EMPTY_FORM })
+  } : { ...EMPTY_FORM, [C.handler]: profile?.displayName || '' })
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   const [typeOpts,  setTypeOpts]  = useState(Q_TYPE_OPTS)

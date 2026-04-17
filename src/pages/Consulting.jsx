@@ -977,7 +977,7 @@ export default function Consulting() {
   const [rows, setRows]       = useState([])
   const [loading, setLoad]    = useState(false)
   const [err, setErr]         = useState('')
-  const [fyFilter, setFY]     = useState('全部')
+  const [fyFilter, setFY]     = useState(() => String(getFY(new Date().toISOString()) ?? '全部'))
   const [filters, setFilters] = useState({ ...INIT_FILTERS })
   const [sortKey, setSortKey] = useState('acceptDate')
   const [sortDir, setSortDir] = useState('desc')

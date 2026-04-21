@@ -209,14 +209,15 @@ function AnalyticsSection({ data, loading }) {
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                 <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--muted)' }} tickLine={false} axisLine={false}
                   interval={4} />
-                <YAxis tick={{ fontSize: 10, fill: 'var(--muted)' }} tickLine={false} axisLine={false} allowDecimals={false} />
+                <YAxis yAxisId="left" tick={{ fontSize: 10, fill: '#6366F1' }} tickLine={false} axisLine={false} allowDecimals={false} />
+                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: '#10B981' }} tickLine={false} axisLine={false} allowDecimals={false} />
                 <Tooltip
                   contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 12 }}
                   labelStyle={{ color: 'var(--text)', fontWeight: 600 }}
                   formatter={(v, name) => [v, name === 'pv' ? 'PV（访问次数）' : 'UV（独立访客）']}
                 />
-                <Line type="monotone" dataKey="pv" stroke="#6366F1" strokeWidth={2} dot={false} name="pv" />
-                <Line type="monotone" dataKey="uv" stroke="#10B981" strokeWidth={2} dot={false} name="uv" />
+                <Line yAxisId="left" type="monotone" dataKey="pv" stroke="#6366F1" strokeWidth={2} dot={false} name="pv" />
+                <Line yAxisId="right" type="monotone" dataKey="uv" stroke="#10B981" strokeWidth={2} dot={false} name="uv" />
               </LineChart>
             </ResponsiveContainer>
             <div className="flex gap-4 mt-3 justify-center">

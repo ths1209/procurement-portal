@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Plus, ExternalLink, Eye, X, BarChart3, Package, Download, Upload, Layers, BarChart2, ShieldCheck, CreditCard } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { listAllTools, createFileTool, createUrlTool, createDashItem, deleteFileTool, trackDownload, approveTool, isToolsConfigured } from '../lib/teableTools'
+import { trackVisit } from '../lib/teableAnalytics'
 import { Clock, CheckCircle, XCircle } from 'lucide-react'
 
 const GRADS = ['#6366F1','#0EA5E9','#10B981','#F59E0B','#8B5CF6','#14B8A6','#F97316','#EC4899']
@@ -87,6 +88,16 @@ export default function Dashboard() {
       fileTools: prev.fileTools.map(t => t._id === tool._id ? { ...t, downloads: next } : t),
     }))
     trackDownload(tool._id, tool.downloads)
+    trackToolClick(tool.name)
+  }
+
+  function trackToolClick(name) {
+    if (!profile || !name) return
+    trackVisit({
+      userId: profile.email,
+      displayName: profile.displayName || profile.email,
+      page: `百宝箱·${name}`,
+    })
   }
 
   async function handleDelTool(id) {
@@ -215,6 +226,7 @@ export default function Dashboard() {
               onDelUrl={id => configured ? handleDelTool(id) : ai.del(id)}
               onDelFile={handleDelTool}
               onDownload={handleDownload}
+              onUrlClick={trackToolClick}
             />
           </div>
         </div>
@@ -230,7 +242,8 @@ export default function Dashboard() {
             <DashCard key={d._id || d.id} item={{ ...d, g: d.g ?? (idx % GRADS.length) }}
               isAdmin={isAdmin}
               onDel={() => configured ? handleDelTool(d._id) : dash.del(d.id)}
-              onPrev={() => openPreview(d.url || d.fileUrl)} />
+              onPrev={() => openPreview(d.url || d.fileUrl)}
+              onOpen={() => trackToolClick(d.name)} />
           ))}
           <AddCard label="添加看板" onClick={() => setAddGroup('__dash__')} />
         </div>
@@ -297,7 +310,7 @@ function Section({ title, sub, icon, iconBg, iconClr, onAdd, children }) {
 }
 
 // ─── 分组面板 ─────────────────────────────────────────────────────────────────
-function GroupPanel({ group, urlTools, fileTools, isAdmin, onAdd, onDelUrl, onDelFile, onDownload, nameMap = {} }) {
+function GroupPanel({ group, urlTools, fileTools, isAdmin, onAdd, onDelUrl, onDelFile, onDownload, onUrlClick, nameMap = {} }) {
   const cfg = GROUP_CFG[group] ?? { icon: Layers, color:'#64748B', bg:'rgba(100,116,139,0.07)' }
   const total = urlTools.length + fileTools.length
   const resolveName = v => (v && nameMap[v]) ? nameMap[v] : v
@@ -326,6 +339,7 @@ function GroupPanel({ group, urlTools, fileTools, isAdmin, onAdd, onDelUrl, onDe
             accentColor={cfg.color}
             action={
               <a href={t.url} target="_blank" rel="noopener noreferrer"
+                onClick={() => onUrlClick?.(t.name)}
                 className="press flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-white shrink-0"
                 style={{ background:cfg.color }}>
                 打开 <ExternalLink className="w-3 h-3" />
@@ -401,7 +415,7 @@ function ToolRow({ icon, name, desc, isAdmin, onDel, action, badge, uploadedBy, 
 }
 
 // ─── DashCard（方形紧凑）─────────────────────────────────────────────────────
-function DashCard({ item, isAdmin, onDel, onPrev }) {
+function DashCard({ item, isAdmin, onDel, onPrev, onOpen }) {
   const clr = GRADS[item.g ?? 4]
   return (
     <div className="group flex flex-col overflow-hidden rounded-2xl transition-all duration-200 hover:-translate-y-0.5"
@@ -443,6 +457,7 @@ function DashCard({ item, isAdmin, onDel, onPrev }) {
             <Eye className="w-3 h-3" /> 预览
           </button>
           <a href={item.url} target="_blank" rel="noopener noreferrer"
+            onClick={() => onOpen?.()}
             className="press flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-semibold text-white"
             style={{ background:clr }}>
             打开 <ExternalLink className="w-3 h-3" />

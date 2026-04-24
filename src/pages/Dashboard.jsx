@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom'
 import { Plus, ExternalLink, Eye, X, BarChart3, Package, Download, Upload, Layers, BarChart2, ShieldCheck, CreditCard } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { listAllTools, createFileTool, createUrlTool, createDashItem, deleteFileTool, trackDownload, approveTool, isToolsConfigured } from '../lib/teableTools'
-import { trackVisit } from '../lib/teableAnalytics'
 import { Clock, CheckCircle, XCircle } from 'lucide-react'
 
 const GRADS = ['#6366F1','#0EA5E9','#10B981','#F59E0B','#8B5CF6','#14B8A6','#F97316','#EC4899']
@@ -82,23 +81,17 @@ export default function Dashboard() {
   async function handleDownload(tool) {
     if (!tool.fileUrl) return
     window.open(tool.fileUrl, '_blank')
-    const next = (tool.downloads || 0) + 1
-    setTeableData(prev => ({
-      ...prev,
-      fileTools: prev.fileTools.map(t => t._id === tool._id ? { ...t, downloads: next } : t),
-    }))
-    trackDownload(tool._id, tool.downloads)
-    trackToolClick(tool.name)
+    bumpUsage('fileTools', tool)
   }
 
-  function trackToolClick(name) {
-    if (!profile) return
-    // 用 /dashboard 路径触发访问记录（会被映射为"百宝箱"），兼容 Teable 页面字段 singleSelect 约束
-    trackVisit({
-      userId: profile.email,
-      displayName: profile.displayName || profile.email,
-      page: '/dashboard',
-    })
+  // 统一的使用次数计数：复用 downloads 字段
+  function bumpUsage(key, tool) {
+    if (!configured || !tool?._id) return
+    setTeableData(prev => ({
+      ...prev,
+      [key]: prev[key].map(t => t._id === tool._id ? { ...t, downloads: (t.downloads || 0) + 1 } : t),
+    }))
+    trackDownload(tool._id, tool.downloads)
   }
 
   async function handleDelTool(id) {
@@ -227,7 +220,7 @@ export default function Dashboard() {
               onDelUrl={id => configured ? handleDelTool(id) : ai.del(id)}
               onDelFile={handleDelTool}
               onDownload={handleDownload}
-              onUrlClick={trackToolClick}
+              onUrlClick={tool => bumpUsage('urlTools', tool)}
             />
           </div>
         </div>
@@ -244,7 +237,7 @@ export default function Dashboard() {
               isAdmin={isAdmin}
               onDel={() => configured ? handleDelTool(d._id) : dash.del(d.id)}
               onPrev={() => openPreview(d.url || d.fileUrl)}
-              onOpen={() => trackToolClick(d.name)} />
+              onOpen={() => bumpUsage('dashItems', d)} />
           ))}
           <AddCard label="添加看板" onClick={() => setAddGroup('__dash__')} />
         </div>
@@ -337,10 +330,11 @@ function GroupPanel({ group, urlTools, fileTools, isAdmin, onAdd, onDelUrl, onDe
           <ToolRow key={t._id || t.id} icon={t.icon} name={t.name} desc={t.desc}
             uploadedBy={resolveName(t.uploadedBy)}
             isAdmin={isAdmin} onDel={() => onDelUrl(t._id || t.id)}
+            badge={t.downloads > 0 ? `↗ ${t.downloads}` : null}
             accentColor={cfg.color}
             action={
               <a href={t.url} target="_blank" rel="noopener noreferrer"
-                onClick={() => onUrlClick?.(t.name)}
+                onClick={() => onUrlClick?.(t)}
                 className="press flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-white shrink-0"
                 style={{ background:cfg.color }}>
                 打开 <ExternalLink className="w-3 h-3" />
@@ -432,6 +426,12 @@ function DashCard({ item, isAdmin, onDel, onPrev, onOpen }) {
       <div className="relative flex items-center justify-center py-5 shrink-0"
         style={{ background:`linear-gradient(135deg, ${clr}10, ${clr}05)`, borderBottom:`1px solid ${clr}14` }}>
         <span className="text-3xl select-none">{item.icon}</span>
+        {item.downloads > 0 && (
+          <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold"
+            style={{ background:`${clr}15`, color:clr }}>
+            ↗ {item.downloads}
+          </span>
+        )}
         {isAdmin && (
           <button onClick={onDel}
             className="press absolute top-1.5 right-1.5 w-5 h-5 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"

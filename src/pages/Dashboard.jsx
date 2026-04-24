@@ -92,11 +92,12 @@ export default function Dashboard() {
   }
 
   function trackToolClick(name) {
-    if (!profile || !name) return
+    if (!profile) return
+    // 用 /dashboard 路径触发访问记录（会被映射为"百宝箱"），兼容 Teable 页面字段 singleSelect 约束
     trackVisit({
       userId: profile.email,
       displayName: profile.displayName || profile.email,
-      page: `百宝箱·${name}`,
+      page: '/dashboard',
     })
   }
 

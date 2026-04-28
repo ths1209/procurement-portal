@@ -4,6 +4,7 @@ import { ThemeProvider } from './contexts/ThemeContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
 import Login from './pages/Login'
+import SsoCallback from './pages/SsoCallback'
 import Dashboard from './pages/Dashboard'
 import Projects from './pages/Projects'
 import Reviews from './pages/Reviews'
@@ -33,6 +34,8 @@ function AnimatedRoutes() {
           ? <Navigate to="/dashboard" replace />
           : <Login />
       } />
+
+      <Route path="/sso-callback" element={<SsoCallback />} />
 
       <Route path="/dashboard" element={
         <ProtectedRoute><Layout><Dashboard /></Layout></ProtectedRoute>

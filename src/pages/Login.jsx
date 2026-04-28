@@ -1,11 +1,22 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import talLogo from '../assets/tal-logo.png'
 import { useNavigate } from 'react-router-dom'
 import { Eye, EyeOff, ArrowRight, Check, Moon, Sun } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 
+const SSO_APPID       = import.meta.env.VITE_SSO_APPID
+const SSO_WORKER_BASE = import.meta.env.VITE_SSO_WORKER_BASE
+const SSO_ENABLED     = Boolean(SSO_APPID && SSO_WORKER_BASE)
+
+// SSO 账密登录跳转入口；登录成功后 SSO 侧按"App单点登录回调地址"跳回 #/sso-callback?token=xxx
+const SSO_PORTAL_LOGIN = SSO_APPID
+  ? `https://sso.100tal.com/portal/login/${SSO_APPID}`
+  : ''
+
 export default function Login() {
+  // 默认 Tab：SSO 已配置 → 账密（跳 SSO）；否则回退本地
+  const [tab, setTab]           = useState(SSO_ENABLED ? 'sso-password' : 'local')
   const [mode, setMode]         = useState('login')
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
@@ -17,9 +28,36 @@ export default function Login() {
   const [error, setError]       = useState('')
   const [loading, setLoading]   = useState(false)
   const [done, setDone]         = useState(false)
-  const { login, register }     = useAuth()
+  const { login, register, ssoLogin, ssoTokenLogin } = useAuth()
   const { dark, toggle }        = useTheme()
   const navigate = useNavigate()
+
+  // 监听 iframe 内 SsoCallback 回传的 code / token
+  useEffect(() => {
+    if (!SSO_ENABLED) return
+    async function onMsg(ev) {
+      if (!ev.data || ev.data.type !== 'pp-sso-auth') return
+      const { code, token } = ev.data
+      if (!code && !token) return
+      setLoading(true); setError('')
+      try {
+        if (token) await ssoTokenLogin(token)
+        else       await ssoLogin(code)
+        navigate('/dashboard', { replace: true })
+      } catch (err) {
+        setError(parseErr(err.message))
+      } finally {
+        setLoading(false)
+      }
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [ssoLogin, ssoTokenLogin, navigate])
+
+  function goSsoPortal() {
+    // 直接顶层跳转到 100tal 登录门户；SSO 后台已配好回跳地址
+    window.location.href = SSO_PORTAL_LOGIN
+  }
 
   async function submit(e) {
     e.preventDefault(); setError(''); setLoading(true)
@@ -93,13 +131,76 @@ export default function Login() {
         {/* 右侧表单 */}
         <div className="flex-1 flex flex-col justify-center p-8 lg:p-10 rounded-r-2xl md:rounded-l-none rounded-2xl card">
           <h2 className="text-2xl font-bold mb-1" style={{ color: 'var(--text)' }}>
-            {mode === 'login' ? '欢迎回来 👋' : '申请加入'}
+            {tab === 'sso-password' ? '统一身份登录'
+              : tab === 'sso-qr'    ? '扫码登录'
+              : mode === 'login'    ? '欢迎回来 👋' : '申请加入'}
           </h2>
-          <p className="text-sm mb-7" style={{ color: 'var(--muted)' }}>
-            {mode === 'login' ? '登录以访问工作门户' : '提交申请，等待管理员审批'}
+          <p className="text-sm mb-6" style={{ color: 'var(--muted)' }}>
+            {tab === 'sso-password' ? '跳转到 100tal 统一登录页'
+              : tab === 'sso-qr'    ? '使用 100tal 知音楼 App 扫码'
+              : mode === 'login'    ? '登录以访问工作门户' : '提交申请，等待管理员审批'}
           </p>
 
-          {/* Tab 切换 */}
+          {/* 顶层 Tab：账密(SSO) / 扫码(SSO) / 本地（仅当 SSO 已配置时显示 3 个 Tab） */}
+          {SSO_ENABLED && (
+            <div className="flex p-1 rounded-xl mb-5" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+              {[['sso-password','账号密码'],['sso-qr','扫码登录'],['local','本地测试']].map(([m,l]) => (
+                <button key={m} onClick={() => { setTab(m); setError('') }}
+                  className={`press flex-1 py-2 text-sm font-medium rounded-[10px] transition-all duration-200 ${tab===m ? 'text-white shadow' : ''}`}
+                  style={tab===m ? { background: '#6366F1' } : { color: 'var(--muted)' }}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {tab === 'sso-password' ? (
+            <div className="space-y-4">
+              <div className="rounded-xl p-4 text-sm" style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--muted)' }}>
+                点击下方按钮跳转到 100tal 统一登录页。知音楼 App 内打开本系统会自动免登。
+              </div>
+              <button onClick={goSsoPortal} disabled={loading}
+                className="press w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold text-white shadow-lg transition-opacity disabled:opacity-60"
+                style={{ background: '#6366F1', boxShadow: '0 4px 20px rgba(99,102,241,0.25)' }}>
+                {loading ? <><Spin /> 处理中…</> : <>前往统一登录 <ArrowRight className="w-4 h-4" /></>}
+              </button>
+              {error && (
+                <div className="flex items-center gap-2 rounded-xl px-4 py-3 text-sm animate-scale-in"
+                  style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.2)', color: '#F43F5E' }}>
+                  ⚠️ {error}
+                </div>
+              )}
+              <p className="text-xs text-center" style={{ color: 'var(--muted)' }}>
+                首次登录会创建 pending 账号，需管理员在「用户管理」审批
+              </p>
+            </div>
+          ) : tab === 'sso-qr' ? (
+            <div className="space-y-3">
+              <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)', background: '#fff' }}>
+                <iframe
+                  title="100tal SSO QR"
+                  src={`https://sso.100tal.com/qrcode/v1/login?appid=${encodeURIComponent(SSO_APPID)}`}
+                  style={{ width: '100%', height: 360, border: 0, display: 'block' }}
+                />
+              </div>
+              {loading && (
+                <div className="flex items-center justify-center gap-2 text-sm" style={{ color: 'var(--muted)' }}>
+                  <Spin /> 正在完成登录…
+                </div>
+              )}
+              {error && (
+                <div className="flex items-center gap-2 rounded-xl px-4 py-3 text-sm animate-scale-in"
+                  style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.2)', color: '#F43F5E' }}>
+                  ⚠️ {error}
+                </div>
+              )}
+              <p className="text-xs text-center" style={{ color: 'var(--muted)' }}>
+                首次扫码会创建 pending 账号，需管理员审批
+              </p>
+            </div>
+          ) : <>
+
+          {/* 本地测试：登录 / 申请账号 切换 */}
           <div className="flex p-1 rounded-xl mb-6" style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
             {[['login','登录'],['register','申请账号']].map(([m,l]) => (
               <button key={m} onClick={() => { setMode(m); setError('') }}
@@ -173,6 +274,7 @@ export default function Login() {
               }
             </button>
           </form>
+          </>}
         </div>
       </div>
     </Page>
@@ -212,5 +314,10 @@ function Spin() {
   return <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
 }
 function parseErr(c) {
-  return { USER_NOT_FOUND:'邮箱未注册', WRONG_PASSWORD:'密码错误', EMAIL_EXISTS:'邮箱已被注册' }[c] ?? `操作失败（${c}）`
+  const s = String(c ?? '')
+  if (s.startsWith('SSO_VERIFY_FAILED:')) return 'SSO 校验失败：' + s.slice('SSO_VERIFY_FAILED:'.length)
+  if (s === 'SSO_NOT_CONFIGURED')         return 'SSO 未配置'
+  if (s === 'USER_DISABLED')              return '该账号已被停用'
+  if (s === 'SSO_UPSERT_FAILED')          return '用户同步失败'
+  return { USER_NOT_FOUND:'邮箱未注册', WRONG_PASSWORD:'密码错误', EMAIL_EXISTS:'邮箱已被注册' }[s] ?? `操作失败（${s}）`
 }

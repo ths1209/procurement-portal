@@ -88,10 +88,18 @@ export default function Layout({ children }) {
       {/* 用户信息 */}
       <div className="p-4 space-y-3">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold text-white shrink-0"
-            style={{ background: 'linear-gradient(135deg,#6366F1,#0EA5E9)' }}>
-            {(profile?.displayName || '?')[0].toUpperCase()}
-          </div>
+          {profile?.avatar ? (
+            <img src={profile.avatar} alt={profile?.displayName || 'avatar'}
+              referrerPolicy="no-referrer"
+              className="w-8 h-8 rounded-xl object-cover shrink-0"
+              style={{ border: '1px solid var(--sb-sep)' }}
+              onError={e => { e.currentTarget.style.display = 'none' }} />
+          ) : (
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold text-white shrink-0"
+              style={{ background: 'linear-gradient(135deg,#6366F1,#0EA5E9)' }}>
+              {(profile?.displayName || '?')[0].toUpperCase()}
+            </div>
+          )}
           <div className="min-w-0 flex-1">
             <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--sb-text-strong)' }}>{profile?.displayName || '用户'}</p>
             <p className="text-[10px] truncate" style={{ color: 'var(--sb-muted)' }}>

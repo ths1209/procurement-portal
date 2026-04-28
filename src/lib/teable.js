@@ -52,6 +52,7 @@ function normalize(record) {
     jobId:        f.jobId        ?? '',      // 工号
     ssoAccountId: f.ssoAccountId ?? '',      // SSO 账号 UUID（唯一主键）
     ssoWorkcode:  f.ssoWorkcode  ?? '',      // SSO 工号
+    avatar:       f.avatar       ?? '',      // 头像 URL（来自 SSO thumb）
     status:       f.status       ?? 'pending',
     createdAt:    f.createdAt    ?? '',
   }
@@ -82,6 +83,7 @@ const USER_EXTRA_FIELDS = [
   { name: 'jobId',        type: 'singleLineText' },
   { name: 'ssoAccountId', type: 'singleLineText' },
   { name: 'ssoWorkcode',  type: 'singleLineText' },
+  { name: 'avatar',       type: 'singleLineText' },
 ]
 
 export async function ensureUserFields() {
@@ -177,6 +179,8 @@ export async function upsertSsoUser(ssoUser) {
   const accountId = ssoUser.account_id
   if (!accountId) throw new Error('SSO 返回缺少 account_id')
 
+  const avatar = ssoUser.thumb ?? ssoUser.avatar ?? ''
+
   const byId = await findUserBySsoId(accountId)
   if (byId) {
     const patch = {}
@@ -184,6 +188,7 @@ export async function upsertSsoUser(ssoUser) {
     if (ssoUser.name     && ssoUser.name     !== byId.displayName) patch.displayName = ssoUser.name
     if (ssoUser.workcode && ssoUser.workcode !== byId.ssoWorkcode) patch.ssoWorkcode = ssoUser.workcode
     if (ssoUser.workcode && !byId.jobId)                            patch.jobId       = ssoUser.workcode
+    if (avatar           && avatar           !== byId.avatar)      patch.avatar      = avatar
     if (Object.keys(patch).length > 0) {
       await updateUser(byId.uid, patch)
       return { ...byId, ...patch }
@@ -206,6 +211,7 @@ export async function upsertSsoUser(ssoUser) {
     if (workcode && !matched.jobId)                   patch.jobId       = workcode
     if (ssoUser.email && !matched.email)              patch.email       = ssoUser.email
     if (ssoUser.name  && !matched.displayName)        patch.displayName = ssoUser.name
+    if (avatar       && avatar        !== matched.avatar) patch.avatar  = avatar
     await updateUser(matched.uid, patch)
     return { ...matched, ...patch }
   }
@@ -216,6 +222,7 @@ export async function upsertSsoUser(ssoUser) {
     ssoAccountId: accountId,
     ssoWorkcode:  ssoUser.workcode ?? '',
     jobId:        ssoUser.workcode ?? '',
+    avatar:       avatar,
     role:         'member',
     status:       'pending',
     createdAt:    new Date().toISOString(),

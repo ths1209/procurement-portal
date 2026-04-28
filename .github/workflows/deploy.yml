@@ -49,7 +49,7 @@ jobs:
           VITE_GITHUB_TOKEN:             ${{ secrets.VITE_GITHUB_TOKEN }}
           VITE_GITHUB_REPO:              ${{ secrets.VITE_GITHUB_REPO }}
           VITE_SSO_APPID:                "1877284984"
-          VITE_SSO_WORKER_BASE:          "https://pp-sso.linjialong1209.workers.dev"
+          VITE_SSO_WORKER_BASE:          "https://pp-sso-eoaezrrcds.cn-beijing.fcapp.run"
 
       - uses: actions/upload-pages-artifact@v3
         with:

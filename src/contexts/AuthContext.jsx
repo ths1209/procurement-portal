@@ -80,6 +80,8 @@ export function AuthProvider({ children }) {
     if (body.errcode !== 0 || !body.data) {
       throw new Error(`SSO_VERIFY_FAILED:${body.errmsg ?? 'unknown'}`)
     }
+    console.log('[SSO] verify response data:', body.data)
+    console.log('[SSO] data keys:', Object.keys(body.data))
     const record = await upsertSsoUser(body.data)
     if (!record) throw new Error('SSO_UPSERT_FAILED')
     if (record.status === 'disabled') throw new Error('USER_DISABLED')

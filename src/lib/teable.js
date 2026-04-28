@@ -50,6 +50,8 @@ function normalize(record) {
     group:        f.group        ?? '',      // '运营分析组' | '采购稽核组' | '供应商管理组'
     okrGroup:     f.okrGroup     ?? '',      // OKR 负责组：'采购一组'…'采购五组'，非空即为采购经理
     jobId:        f.jobId        ?? '',      // 工号
+    ssoAccountId: f.ssoAccountId ?? '',      // SSO 账号 UUID（唯一主键）
+    ssoWorkcode:  f.ssoWorkcode  ?? '',      // SSO 工号
     status:       f.status       ?? 'pending',
     createdAt:    f.createdAt    ?? '',
   }
@@ -77,7 +79,9 @@ const USER_EXTRA_FIELDS = [
     { name: '采购一组' }, { name: '采购二组' }, { name: '采购三组' },
     { name: '采购四组' }, { name: '采购运营组' },
   ]}},
-  { name: 'jobId', type: 'singleLineText' },
+  { name: 'jobId',        type: 'singleLineText' },
+  { name: 'ssoAccountId', type: 'singleLineText' },
+  { name: 'ssoWorkcode',  type: 'singleLineText' },
 ]
 
 export async function ensureUserFields() {
@@ -150,4 +154,71 @@ export async function updateUser(recordId, fields) {
     method: 'PATCH',
     body: JSON.stringify({ records: [{ id: recordId, fields }] }),
   })
+}
+
+/** 通过 SSO account_id 查找用户（首选匹配键，SSO 侧保证唯一） */
+export async function findUserBySsoId(ssoAccountId) {
+  if (!ssoAccountId) return null
+  const users = await listUsers()
+  return users.find(u => u.ssoAccountId === ssoAccountId) ?? null
+}
+
+/**
+ * SSO 登录 upsert：
+ *   1. 先按 ssoAccountId 命中 → 回写最新 email/name/workcode（不覆盖 role/status/dept）
+ *   2. 否则按 email 命中 → 补齐 ssoAccountId / ssoWorkcode，首次 SSO 绑定（保留原 status）
+ *   3. 否则按 workcode === jobId 命中 → 同上绑定（保留原 status，避免已激活用户被降回 pending）
+ *   4. 仍未命中 → 建新记录，status=pending 等管理员审批
+ *
+ * ssoUser: { account_id, account, email, name, workcode, yachid }
+ * 返回：归一化后的用户对象
+ */
+export async function upsertSsoUser(ssoUser) {
+  const accountId = ssoUser.account_id
+  if (!accountId) throw new Error('SSO 返回缺少 account_id')
+
+  const byId = await findUserBySsoId(accountId)
+  if (byId) {
+    const patch = {}
+    if (ssoUser.email    && ssoUser.email    !== byId.email)       patch.email       = ssoUser.email
+    if (ssoUser.name     && ssoUser.name     !== byId.displayName) patch.displayName = ssoUser.name
+    if (ssoUser.workcode && ssoUser.workcode !== byId.ssoWorkcode) patch.ssoWorkcode = ssoUser.workcode
+    if (ssoUser.workcode && !byId.jobId)                            patch.jobId       = ssoUser.workcode
+    if (Object.keys(patch).length > 0) {
+      await updateUser(byId.uid, patch)
+      return { ...byId, ...patch }
+    }
+    return byId
+  }
+
+  // 首次 SSO：用 email 或 workcode 匹配历史账号，直接绑定，保留原 status
+  const users = await listUsers()
+  const email = (ssoUser.email ?? '').toLowerCase()
+  const workcode = String(ssoUser.workcode ?? '').trim()
+
+  const matched =
+    (email    && users.find(u => u.email?.toLowerCase() === email && !u.ssoAccountId)) ||
+    (workcode && users.find(u => String(u.jobId ?? '').trim() === workcode && !u.ssoAccountId))
+
+  if (matched) {
+    const patch = { ssoAccountId: accountId }
+    if (workcode && workcode !== matched.ssoWorkcode) patch.ssoWorkcode = workcode
+    if (workcode && !matched.jobId)                   patch.jobId       = workcode
+    if (ssoUser.email && !matched.email)              patch.email       = ssoUser.email
+    if (ssoUser.name  && !matched.displayName)        patch.displayName = ssoUser.name
+    await updateUser(matched.uid, patch)
+    return { ...matched, ...patch }
+  }
+
+  const created = await createUser({
+    email:        ssoUser.email ?? '',
+    displayName:  ssoUser.name ?? ssoUser.account ?? '',
+    ssoAccountId: accountId,
+    ssoWorkcode:  ssoUser.workcode ?? '',
+    jobId:        ssoUser.workcode ?? '',
+    role:         'member',
+    status:       'pending',
+    createdAt:    new Date().toISOString(),
+  })
+  return created
 }

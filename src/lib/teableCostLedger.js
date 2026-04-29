@@ -6,6 +6,8 @@
 const API   = (import.meta.env.VITE_TEABLE_API_BASE ?? '').replace(/\/$/, '')
 const TOKEN = import.meta.env.VITE_TEABLE_TOKEN
 const TID   = import.meta.env.VITE_TEABLE_COST_LEDGER_TABLE_ID
+// 分享视图 viewId：使用该视图的 filter / sort / group（FY27 增量降本 · 202 条）
+const VID   = 'viw4NKBSKkxIo1kOrlK'
 
 export const isCostLedgerConfigured = () => !!(TID && TOKEN)
 
@@ -107,9 +109,10 @@ export async function listCostLedger(profile) {
   // 非管理员必须有工号才能过滤
   if (!isAdmin && !profile?.jobId) return []
 
-  let url = `/table/${TID}/record?take=1000&fieldKeyType=name`
+  // 用 viewId 让后端应用视图的 filter/sort（FY27 增量降本、降本金额>0、检索值非空）
+  let url = `/table/${TID}/record?take=1000&fieldKeyType=name&viewId=${VID}`
   if (!isAdmin) {
-    // Teable 的 filter 查询参数（URL 编码 JSON）
+    // viewId 之外额外叠加工号过滤
     const filter = {
       conjunction: 'and',
       filterSet: [{ fieldId: F.buyerJobId, operator: 'is', value: String(profile.jobId) }],

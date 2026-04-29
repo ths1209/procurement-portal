@@ -13,11 +13,19 @@ import {
   fmtCNY, fmtPct, isCostLedgerConfigured, F, EDITABLE,
 } from '../lib/teableCostLedger'
 
-// 角色 → 颜色
+// 角色 → 颜色（柔和色块，非渐变）
 const ROLE_STYLE = {
-  '主导者':  { bg: 'linear-gradient(135deg,#F59E0B,#EF4444)', icon: Crown,    label: '主导者' },
-  '参与者':  { bg: 'linear-gradient(135deg,#6366F1,#8B5CF6)', icon: Sparkles, label: '参与者' },
-  '支持者':  { bg: 'linear-gradient(135deg,#0EA5E9,#22D3EE)', icon: User,     label: '支持者' },
+  '主导者':  { bg: 'rgba(239,68,68,0.10)',  color: '#DC2626', icon: Crown,    label: '主导者' },
+  '参与者':  { bg: 'rgba(99,102,241,0.10)', color: '#4F46E5', icon: Sparkles, label: '参与者' },
+  '支持者':  { bg: 'rgba(14,165,233,0.10)', color: '#0369A1', icon: User,     label: '支持者' },
+}
+const ROLE_FALLBACK = { bg: 'rgba(100,116,139,0.10)', color: '#475569', icon: User, label: '未分类' }
+
+// 详情抽屉里用渐变
+const ROLE_GRADIENT = {
+  '主导者': 'linear-gradient(135deg,#F59E0B,#EF4444)',
+  '参与者': 'linear-gradient(135deg,#6366F1,#8B5CF6)',
+  '支持者': 'linear-gradient(135deg,#0EA5E9,#22D3EE)',
 }
 
 const TEABLE_SHARE = 'https://yach-teable.zhiyinlou.com/share/shrlzdx0BtJxMDu0294/view'
@@ -243,85 +251,66 @@ function Select({ value, onChange, options, placeholder, icon: Icon }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 function RecordCard({ record, onOpen }) {
   const f = record.fields
-  const roleKey  = f[F.role] || ''
-  const roleStyle = ROLE_STYLE[roleKey] || { bg: 'linear-gradient(135deg,#64748b,#94a3b8)', icon: User, label: roleKey || '未分类' }
+  const roleKey = f[F.role] || ''
+  const roleStyle = ROLE_STYLE[roleKey] || ROLE_FALLBACK
   const RoleIcon = roleStyle.icon
 
-  const saving     = num(f[F.savingAdjusted])
-  const winAmount  = num(f[F.winAmount])
-  const rate       = winAmount > 0 ? saving / winAmount : num(f[F.saveRate])
-
-  const categories = toArr(f[F.categoryBig])
-  const methods    = toArr(f[F.saveMethods])
+  const saving    = num(f[F.savingAdjusted])
+  const winAmount = num(f[F.winAmount])
+  const rate      = winAmount > 0 ? saving / winAmount : num(f[F.saveRate])
+  const cat       = toArr(f[F.categoryBig])[0]
   const attachCount = [F.priceAttach, F.roleAttach, F.marketAttach, F.otherAttach, F.quoteAttach]
     .reduce((s, fld) => s + (Array.isArray(f[fld]) ? f[fld].length : 0), 0)
 
   return (
     <button onClick={onOpen}
-      className="press group text-left w-full rounded-2xl p-4 transition-all duration-200 relative overflow-hidden"
-      style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-      {/* 角色徽标 */}
-      <div className="flex items-center justify-between mb-3">
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-white shadow-sm"
-          style={{ background: roleStyle.bg }}>
-          <RoleIcon className="w-3 h-3" />{roleStyle.label}
+      className="card text-left w-full rounded-2xl p-5">
+      {/* 顶部：角色 + 品类 */}
+      <div className="flex items-center justify-between mb-4">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-semibold"
+          style={{ background: roleStyle.bg, color: roleStyle.color }}>
+          <RoleIcon className="w-2.5 h-2.5" />{roleStyle.label}
         </span>
-        {categories[0] && (
-          <span className="text-[10.5px] px-2 py-0.5 rounded-md font-medium"
-            style={{ background: 'var(--surface2)', color: 'var(--muted)' }}>
-            {categories[0]}
-          </span>
+        {cat && (
+          <span className="text-[10.5px]" style={{ color: 'var(--muted)' }}>{cat}</span>
         )}
       </div>
 
-      {/* 项目名 */}
-      <h3 className="text-[14.5px] font-bold leading-snug mb-1.5 line-clamp-2 group-hover:text-indigo-500 transition-colors"
+      {/* 标识：项目名 + 供应商（固定 2 行高度） */}
+      <h3 className="text-[14.5px] font-semibold tracking-tight leading-tight truncate mb-1"
         style={{ color: 'var(--text)' }}>
         {f[F.projectName] || '未命名项目'}
       </h3>
+      <p className="text-[11.5px] truncate mb-4" style={{ color: 'var(--muted)' }}>
+        {f[F.supplier] || '—'}
+      </p>
 
-      {/* 供应商 */}
-      <div className="flex items-center gap-1.5 text-[12px] mb-3" style={{ color: 'var(--muted)' }}>
-        <Building2 className="w-3 h-3 shrink-0" />
-        <span className="truncate">{f[F.supplier] || '—'}</span>
-      </div>
-
-      {/* 金额三联 */}
-      <div className="grid grid-cols-3 gap-2 rounded-xl p-2.5 mb-3"
-        style={{ background: 'var(--surface2)' }}>
-        <Metric label="中标金额"  value={fmtCNY(winAmount)} color="var(--text)" />
-        <Metric label="降本金额"  value={fmtCNY(saving)}    color="#10B981" />
-        <Metric label="降本率"    value={fmtPct(rate)}      color="#F59E0B" />
-      </div>
-
-      {/* 底部 meta */}
-      <div className="flex items-center justify-between text-[11px]" style={{ color: 'var(--muted)' }}>
-        <div className="flex items-center gap-2.5">
-          {methods[0] && (
-            <span className="flex items-center gap-1">
-              <Package className="w-3 h-3" />{methods[0]}
-            </span>
-          )}
-          {attachCount > 0 && (
-            <span className="flex items-center gap-0.5">
-              <Paperclip className="w-3 h-3" />{attachCount}
-            </span>
-          )}
-        </div>
-        <span className="flex items-center gap-1">
-          <Calendar className="w-3 h-3" />{fmtDate(f[F.projectDate])}
+      {/* 英雄数字：降本金额 */}
+      <div className="flex items-baseline gap-1.5 mb-1">
+        <span className="text-[26px] font-bold tracking-tight leading-none" style={{ color: '#10B981' }}>
+          ¥{fmtCNY(saving)}
         </span>
+        <span className="text-[11px]" style={{ color: 'var(--muted)' }}>降本</span>
+      </div>
+      <p className="text-[11.5px] mb-4" style={{ color: 'var(--muted)' }}>
+        降本率 <span className="font-semibold" style={{ color: 'var(--text)' }}>{fmtPct(rate)}</span>
+        {' · '}
+        合同 <span className="font-semibold" style={{ color: 'var(--text)' }}>¥{fmtCNY(winAmount)}</span>
+      </p>
+
+      {/* 弱化 meta */}
+      <div className="flex items-center gap-3 text-[10.5px] pt-3"
+        style={{ color: 'var(--muted)', borderTop: '1px solid var(--border)' }}>
+        <span className="flex items-center gap-1">
+          <Calendar className="w-3 h-3" />{fmtDate(f[F.projectDate]) || '—'}
+        </span>
+        {attachCount > 0 && (
+          <span className="flex items-center gap-0.5">
+            <Paperclip className="w-3 h-3" />{attachCount}
+          </span>
+        )}
       </div>
     </button>
-  )
-}
-
-function Metric({ label, value, color }) {
-  return (
-    <div>
-      <div className="text-[10px] mb-0.5" style={{ color: 'var(--muted)' }}>{label}</div>
-      <div className="text-[13px] font-bold tracking-tight" style={{ color }}>{value}</div>
-    </div>
   )
 }
 
@@ -358,7 +347,8 @@ function DetailDrawer({ record, onClose, onSaved, isAdmin }) {
   }
 
   const roleKey = f[F.role] || ''
-  const roleStyle = ROLE_STYLE[roleKey] || { bg: 'linear-gradient(135deg,#64748b,#94a3b8)', icon: User, label: roleKey || '未分类' }
+  const roleStyle = ROLE_STYLE[roleKey] || ROLE_FALLBACK
+  const roleGradient = ROLE_GRADIENT[roleKey] || 'linear-gradient(135deg,#64748b,#94a3b8)'
   const RoleIcon = roleStyle.icon
   const rate = num(f[F.winAmount]) > 0 ? num(f[F.savingAdjusted]) / num(f[F.winAmount]) : num(f[F.saveRate])
 
@@ -374,7 +364,7 @@ function DetailDrawer({ record, onClose, onSaved, isAdmin }) {
           style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-white shrink-0"
-              style={{ background: roleStyle.bg }}>
+              style={{ background: roleGradient }}>
               <RoleIcon className="w-3 h-3" />{roleStyle.label}
             </span>
             <h2 className="text-[15px] font-bold truncate" style={{ color: 'var(--text)' }}>

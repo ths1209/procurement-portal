@@ -57,7 +57,7 @@ function AnimatedRoutes() {
         <ProtectedRoute requireOps><Layout><Consulting /></Layout></ProtectedRoute>
       } />
       <Route path="/cost-ledger" element={
-        <ProtectedRoute><Layout><CostLedger /></Layout></ProtectedRoute>
+        <ProtectedRoute requireAdmin><Layout><CostLedger /></Layout></ProtectedRoute>
       } />
       <Route path="/admin" element={
         <ProtectedRoute requireAdmin><Layout><AdminPanel /></Layout></ProtectedRoute>

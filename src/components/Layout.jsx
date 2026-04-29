@@ -7,13 +7,15 @@ import { LayoutDashboard, ClipboardList, Medal, BookOpen, Users, LogOut, Menu, X
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 
+const COST_LEDGER_URL = 'https://yach-teable.zhiyinlou.com/base/bsezwCnyl2rAB8R4wFT/table/tbl4e5Cuu6nlNw19uqz/viw4NKBSKkxIo1kOrlK'
+
 const NAV = [
   { to: '/dashboard',  label: '百宝箱',      icon: LayoutDashboard },
   { to: '/ai-wishes',  label: 'AI 需求池',   icon: Sparkles        },
   { to: '/okr-report', label: 'OKR 进度',    icon: TrendingUp, okrOnly: true },
   { to: '/projects',   label: '项目进度',    icon: ClipboardList, hideGroupPurchase: true },
   { to: '/reviews',    label: '百万项目评审', icon: Medal           },
-  { to: '/cost-ledger',label: '成本台账',    icon: Wallet          },
+  { href: COST_LEDGER_URL, label: '成本台账', icon: Wallet, external: true },
   { to: '/consulting', label: '咨询赋能台账', icon: BookOpen, opsOnly: true },
   { to: '/admin',      label: '用户管理',    icon: Users, admin: true },
 ]
@@ -54,7 +56,7 @@ export default function Layout({ children }) {
         <div className="flex items-center gap-2.5">
           <img src={talLogo} alt="TAL 好未来" className="h-8 w-auto object-contain" />
           <div>
-            <p className="text-[13px] font-semibold leading-none" style={{ color: 'var(--sb-text-strong)' }}>采购运营组</p>
+            <p className="text-[13px] font-semibold leading-none" style={{ color: 'var(--sb-text-strong)' }}>采购工作门户</p>
             <p className="text-[10px] mt-0.5 tracking-widest" style={{ color: 'var(--sb-muted)' }}>PORTAL</p>
           </div>
         </div>
@@ -67,7 +69,14 @@ export default function Layout({ children }) {
 
       {/* 导航 */}
       <nav className="flex-1 px-3 py-3 space-y-0.5">
-        {links.map(item => (
+        {links.map(item => item.external ? (
+          <a key={item.href} href={item.href} target="_blank" rel="noopener noreferrer"
+            onClick={() => setOpen(false)}
+            className="sb-nav-link flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-200 press">
+            <item.icon className="w-4 h-4 shrink-0" strokeWidth={1.75} style={{ color: 'var(--sb-muted)' }} />
+            {item.label}
+          </a>
+        ) : (
           <NavLink key={item.to} to={item.to} onClick={() => setOpen(false)}
             className={({ isActive }) =>
               `sb-nav-link flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-200 press${isActive ? ' sb-nav-active' : ''}`

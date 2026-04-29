@@ -506,12 +506,16 @@ function AddToolModal({ group, onClose, onSaveUrl, onSaveFile }) {
     e.preventDefault(); setSaving(true)
     try {
       if (type === 'url') {
-        onSaveUrl(f)
+        await onSaveUrl(f)
       } else {
         // 文件模式：有 File 对象则上传；否则用链接
         await onSaveFile({ ...f, file: (!useLink && file) ? file : undefined })
       }
-    } catch(err) { alert('保存失败：' + err.message); setSaving(false) }
+    } catch(err) {
+      alert('保存失败：' + (err?.message || err))
+    } finally {
+      setSaving(false)
+    }
   }
 
   const fileReady = type === 'file' && ((!useLink && file) || (useLink && f.fileUrl))

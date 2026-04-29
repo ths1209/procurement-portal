@@ -154,11 +154,11 @@ export async function createUrlTool({ name, icon, desc, group, url }, addedBy) {
   })
   let data
   try {
-    data = await req(`/table/${TID}/record`, { method: 'POST', body: JSON.stringify({ records: [{ fields }] }) })
+    data = await req(`/table/${TID}/record`, { method: 'POST', body: JSON.stringify({ fieldKeyType: 'name', typecast: true, records: [{ fields }] }) })
   } catch (e) {
     if (e.message?.includes('not found')) {
       await ensureToolsFields()
-      data = await req(`/table/${TID}/record`, { method: 'POST', body: JSON.stringify({ records: [{ fields }] }) })
+      data = await req(`/table/${TID}/record`, { method: 'POST', body: JSON.stringify({ fieldKeyType: 'name', typecast: true, records: [{ fields }] }) })
     } else { throw e }
   }
   return normTool(data.records?.[0])
@@ -177,11 +177,11 @@ export async function createDashItem({ name, icon, desc, url }, addedBy) {
   })
   let data
   try {
-    data = await req(`/table/${TID}/record`, { method: 'POST', body: JSON.stringify({ records: [{ fields }] }) })
+    data = await req(`/table/${TID}/record`, { method: 'POST', body: JSON.stringify({ fieldKeyType: 'name', typecast: true, records: [{ fields }] }) })
   } catch (e) {
     if (e.message?.includes('not found')) {
       await ensureToolsFields()
-      data = await req(`/table/${TID}/record`, { method: 'POST', body: JSON.stringify({ records: [{ fields }] }) })
+      data = await req(`/table/${TID}/record`, { method: 'POST', body: JSON.stringify({ fieldKeyType: 'name', typecast: true, records: [{ fields }] }) })
     } else { throw e }
   }
   return normTool(data.records?.[0])
@@ -225,11 +225,11 @@ export async function createFileTool({ name, icon, desc, group, fileUrl, fileNam
 
   let data
   try {
-    data = await req(`/table/${TID}/record`, { method: 'POST', body: JSON.stringify({ records: [{ fields }] }) })
+    data = await req(`/table/${TID}/record`, { method: 'POST', body: JSON.stringify({ fieldKeyType: 'name', typecast: true, records: [{ fields }] }) })
   } catch (e) {
     if (e.message?.includes('not found')) {
       await ensureToolsFields()
-      data = await req(`/table/${TID}/record`, { method: 'POST', body: JSON.stringify({ records: [{ fields }] }) })
+      data = await req(`/table/${TID}/record`, { method: 'POST', body: JSON.stringify({ fieldKeyType: 'name', typecast: true, records: [{ fields }] }) })
     } else { throw e }
   }
 

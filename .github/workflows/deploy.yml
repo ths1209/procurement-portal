@@ -40,6 +40,7 @@ jobs:
           VITE_TEABLE_ANALYTICS_TABLE_ID:  ${{ secrets.VITE_TEABLE_ANALYTICS_TABLE_ID }}
           VITE_TEABLE_AI_TABLE_ID:         ${{ secrets.VITE_TEABLE_AI_TABLE_ID }}
           VITE_TEABLE_OKR_TABLE_ID:        ${{ secrets.VITE_TEABLE_OKR_TABLE_ID }}
+          VITE_TEABLE_COST_LEDGER_TABLE_ID: "tbl4e5Cuu6nlNw19uqz"
           VITE_SHUHUAN_WEBHOOK:          ${{ secrets.VITE_SHUHUAN_WEBHOOK }}
           VITE_AI_API_KEY:               ${{ secrets.VITE_AI_API_KEY }}
           VITE_AI_API_BASE:              ${{ secrets.VITE_AI_API_BASE }}

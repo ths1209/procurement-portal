@@ -147,6 +147,17 @@
     box-shadow: 0 12px 40px rgba(99,102,241,0.15), 0 4px 12px rgba(0,0,0,0.08);
   }
 
+  /* 极简下拉：hover 出现浅底 */
+  .mini-select > select {
+    transition: background-color 0.16s ease, color 0.16s ease;
+  }
+  .mini-select:hover > select {
+    background: var(--surface2) !important;
+  }
+  .mini-select[data-active="1"] > select {
+    background: rgba(99,102,241,0.08) !important;
+  }
+
   /* 成本台账卡片：hover 提升 + 柔光渐入 + active 缩放 */
   .cost-card {
     position: relative;

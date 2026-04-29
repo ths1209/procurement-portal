@@ -27,7 +27,7 @@ const ROLE_GRADIENT = {
   '支持者': 'linear-gradient(135deg,#0EA5E9,#22D3EE)',
 }
 
-const TEABLE_SHARE = 'https://yach-teable.zhiyinlou.com/share/shrlzdx0BtJxMDu0294/view'
+const TEABLE_SHARE = 'https://yach-teable.zhiyinlou.com/base/bsezwCnyl2rAB8R4wFT/table/tbl4e5Cuu6nlNw19uqz/viw4NKBSKkxIo1kOrlK'
 
 export default function CostLedger() {
   const { profile } = useAuth()
@@ -233,51 +233,78 @@ function StatGrid({ s, activeRole, onRoleClick }) {
 function Toolbar({ keyword, setKeyword, role, setRole, roleOpts,
                    cat, setCat, catOpts, buyer, setBuyer, buyerOpts,
                    org, setOrg, orgOpts, sort, setSort, count, isAdmin }) {
+  const hasFilter = role || cat || buyer || org || keyword
+  function clearAll() {
+    setKeyword(''); setRole(''); setCat(''); setBuyer(''); setOrg('')
+  }
   return (
-    <div className="rounded-2xl p-3 flex items-center gap-2.5 flex-wrap"
-      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-      <div className="relative flex-1 min-w-[200px]">
+    <div className="flex items-center gap-2 flex-wrap px-1">
+      <div className="relative flex-1 min-w-[220px] max-w-[360px]">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--muted)' }} />
         <input value={keyword} onChange={e => setKeyword(e.target.value)}
-          placeholder="搜索项目 / 供应商 / 合同号 / 采购员…"
-          className="w-full pl-9 pr-3 py-2 rounded-xl text-[13px] outline-none transition-colors"
+          placeholder="搜索项目 / 供应商 / 合同号 / 采购员"
+          className="w-full pl-9 pr-3 py-1.5 rounded-lg text-[13px] outline-none transition-colors"
           style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid transparent' }} />
       </div>
 
-      <Select value={role} onChange={setRole} placeholder="全部角色" options={roleOpts} />
-      <Select value={cat}  onChange={setCat}  placeholder="全部品类" options={catOpts} />
+      <MiniSelect value={role} onChange={setRole} placeholder="全部角色" options={roleOpts} />
+      <MiniSelect value={cat}  onChange={setCat}  placeholder="全部品类" options={catOpts} />
       {isAdmin && buyerOpts.length > 1 && (
-        <Select value={buyer} onChange={setBuyer} placeholder="全部采购员" options={buyerOpts} />
+        <MiniSelect value={buyer} onChange={setBuyer} placeholder="全部采购员" options={buyerOpts} />
       )}
       {orgOpts.length > 1 && (
-        <Select value={org} onChange={setOrg} placeholder="全部采购组织" options={orgOpts} />
+        <MiniSelect value={org} onChange={setOrg} placeholder="全部采购组织" options={orgOpts} />
       )}
 
-      <Select value={sort} onChange={setSort} options={[
+      <MiniSelect value={sort} onChange={setSort} options={[
         { value: 'saving-desc', label: '按降本金额' },
         { value: 'rate-desc',   label: '按降本率'   },
         { value: 'amount-desc', label: '按合同金额' },
         { value: 'time-desc',   label: '按时间'     },
       ]} icon={SlidersHorizontal} />
 
-      <div className="text-[11px] ml-auto px-2" style={{ color: 'var(--muted)' }}>
-        共 <span className="font-semibold" style={{ color: 'var(--text)' }}>{count}</span> 条
+      <div className="flex items-center gap-2 ml-auto text-[11.5px]" style={{ color: 'var(--muted)' }}>
+        {hasFilter && (
+          <button onClick={clearAll}
+            className="press inline-flex items-center gap-1 px-2 py-1 rounded-md transition-colors hover:text-[var(--text)]"
+            style={{ color: 'var(--muted)' }}>
+            <X className="w-3 h-3" />清空
+          </button>
+        )}
+        <span>共 <span className="font-semibold tabular-nums" style={{ color: 'var(--text)' }}>{count}</span> 条</span>
       </div>
     </div>
   )
 }
 
-function Select({ value, onChange, options, placeholder, icon: Icon }) {
+/**
+ * 极简下拉：默认完全透明，hover 显浅底；一旦有值则文字变主色且左侧带小圆点。
+ */
+function MiniSelect({ value, onChange, options, placeholder, icon: Icon }) {
   const opts = options.map(o => typeof o === 'string' ? { value: o, label: o } : o)
+  const active = !!value
   return (
-    <div className="relative">
-      {Icon && <Icon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: 'var(--muted)' }} />}
+    <div className="relative mini-select" data-active={active ? '1' : '0'}>
+      {Icon && !active && (
+        <Icon className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: 'var(--muted)' }} />
+      )}
+      {active && (
+        <span className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full pointer-events-none"
+          style={{ background: '#6366F1' }} />
+      )}
       <select value={value} onChange={e => onChange(e.target.value)}
-        className={`appearance-none py-2 pr-7 ${Icon ? 'pl-8' : 'pl-3'} rounded-xl text-[12.5px] outline-none cursor-pointer`}
-        style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid transparent' }}>
+        className={`appearance-none py-1.5 pr-6 rounded-md text-[12.5px] outline-none cursor-pointer transition-colors ${(Icon || active) ? 'pl-6' : 'pl-2.5'}`}
+        style={{
+          background: 'transparent',
+          color: active ? '#4F46E5' : 'var(--text)',
+          fontWeight: active ? 600 : 500,
+          border: '1px solid transparent',
+        }}>
         {placeholder && <option value="">{placeholder}</option>}
         {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
+      <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none"
+        style={{ color: active ? '#6366F1' : 'var(--muted)', opacity: 0.7 }} />
     </div>
   )
 }

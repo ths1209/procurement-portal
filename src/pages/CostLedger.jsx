@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Wallet, ExternalLink, AlertCircle, Loader2 } from 'lucide-react'
 
-const EMBED_URL = import.meta.env.VITE_TEABLE_COST_LEDGER_URL || ''
+const DEFAULT_URL = 'https://yach-teable.zhiyinlou.com/base/bsezwCnyl2rAB8R4wFT/table/tbl4e5Cuu6nlNw19uqz/viw4NKBSKkxIo1kOrlK'
+const EMBED_URL = import.meta.env.VITE_TEABLE_COST_LEDGER_URL || DEFAULT_URL
 
 export default function CostLedger() {
   const [loading, setLoading] = useState(!!EMBED_URL)

@@ -6,8 +6,16 @@
 const API   = (import.meta.env.VITE_TEABLE_API_BASE ?? '').replace(/\/$/, '')
 const TOKEN = import.meta.env.VITE_TEABLE_TOKEN
 const TID   = import.meta.env.VITE_TEABLE_COST_LEDGER_TABLE_ID
-// 分享视图 viewId：原表视图，降本金额公式列非空；采购品类可为空（空时在前端显示"未确认"）
-const VID   = 'viw4NKBSKkxIo1kOrlK'
+
+// 支持的视图白名单 + 默认视图
+// 对应 Teable 表 tbl4e5Cuu6nlNw19uqz 的 4 个业务视图，名称从 API 动态拉取
+export const COST_LEDGER_VIEWS = [
+  'viw4NKBSKkxIo1kOrlK', // 默认：FY27增量项目【存在降本】
+  'viwkfqG1PMtbCdd2y44',
+  'viwY9IggKRWjl0IJq3K',
+  'viwfmPtBBkW5N99aDNY',
+]
+export const DEFAULT_VIEW = COST_LEDGER_VIEWS[0]
 
 export const isCostLedgerConfigured = () => !!(TID && TOKEN)
 
@@ -134,16 +142,17 @@ async function req(path, init = {}) {
 /**
  * 拉取成本台账数据。普通用户仅返回自己的记录（按工号匹配），管理员拉全部。
  * @param {Object} profile - { jobId, displayName, role }
+ * @param {string} [viewId] - 视图 id，默认使用 DEFAULT_VIEW
  */
-export async function listCostLedger(profile) {
+export async function listCostLedger(profile, viewId = DEFAULT_VIEW) {
   if (!TID) return []
   const isAdmin = profile?.role === 'admin'
 
   // 非管理员必须有工号才能过滤
   if (!isAdmin && !profile?.jobId) return []
 
-  // 用 viewId 让后端应用视图的 filter/sort（FY27 增量降本、降本金额>0、检索值非空）
-  let url = `/table/${TID}/record?take=1000&fieldKeyType=name&viewId=${VID}`
+  // 用 viewId 让后端应用视图的 filter/sort
+  let url = `/table/${TID}/record?take=1000&fieldKeyType=name&viewId=${viewId || DEFAULT_VIEW}`
   if (!isAdmin) {
     // viewId 之外额外叠加工号过滤
     const filter = {
@@ -155,6 +164,20 @@ export async function listCostLedger(profile) {
 
   const data = await req(url)
   return (data?.records ?? []).map(normalize)
+}
+
+// ── 拉取视图列表（用于 tab 标题） ───────────────────────────────────────────
+// 只返回白名单中的视图，按白名单顺序排列，含 name / id
+let _viewsCache = null
+export async function loadViews() {
+  if (_viewsCache) return _viewsCache
+  if (!TID) return []
+  const list = await req(`/table/${TID}/view`)
+  const byId = Object.fromEntries((list ?? []).map(v => [v.id, v]))
+  const ordered = COST_LEDGER_VIEWS
+    .map(id => byId[id] ? { id, name: byId[id].name } : { id, name: id })
+  _viewsCache = ordered
+  return ordered
 }
 
 function normalize(r) {

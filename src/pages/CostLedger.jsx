@@ -8,8 +8,8 @@ import {
 import { createPortal } from 'react-dom'
 import { useAuth } from '../contexts/AuthContext'
 import {
-  listCostLedger, updateCostLedger, getAttachments, loadFieldChoices,
-  fmtCNY, fmtPct, isCostLedgerConfigured, F, EDITABLE, EDITABLE_GROUPS,
+  listCostLedger, updateCostLedger, getAttachments, loadFieldChoices, loadViews,
+  fmtCNY, fmtPct, isCostLedgerConfigured, F, EDITABLE, EDITABLE_GROUPS, DEFAULT_VIEW,
 } from '../lib/teableCostLedger'
 
 // 角色 → 颜色（柔和色块，非渐变）
@@ -29,7 +29,7 @@ const ROLE_GRADIENT = {
   '执行者': 'linear-gradient(135deg,#10B981,#22D3EE)',
 }
 
-const TEABLE_SHARE = 'https://yach-teable.zhiyinlou.com/base/bsezwCnyl2rAB8R4wFT/table/tbl4e5Cuu6nlNw19uqz/viw4NKBSKkxIo1kOrlK'
+const TEABLE_BASE = 'https://yach-teable.zhiyinlou.com/base/bsezwCnyl2rAB8R4wFT/table/tbl4e5Cuu6nlNw19uqz'
 
 export default function CostLedger() {
   const { profile } = useAuth()
@@ -37,6 +37,8 @@ export default function CostLedger() {
 
   const [rows,    setRows]    = useState([])
   const [choices, setChoices] = useState({})
+  const [views,   setViews]   = useState([])
+  const [viewId,  setViewId]  = useState(DEFAULT_VIEW)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState('')
   const [picked,  setPicked]  = useState(null)
@@ -48,7 +50,7 @@ export default function CostLedger() {
   const [org,     setOrg]     = useState('')
   const [sort,    setSort]    = useState('saving-desc')
 
-  useEffect(() => { load() }, [profile?.jobId, profile?.role])
+  useEffect(() => { load() }, [profile?.jobId, profile?.role, viewId])
 
   async function load() {
     if (!isCostLedgerConfigured()) {
@@ -56,14 +58,27 @@ export default function CostLedger() {
     }
     setLoading(true); setError('')
     try {
-      const [data, ch] = await Promise.all([listCostLedger(profile), loadFieldChoices()])
+      const [data, ch, vs] = await Promise.all([
+        listCostLedger(profile, viewId),
+        loadFieldChoices(),
+        loadViews(),
+      ])
       setRows(data)
       setChoices(ch)
+      setViews(vs)
     } catch (e) {
       setError(e.message || '加载失败')
     } finally {
       setLoading(false)
     }
+  }
+
+  // 切换视图：重置筛选和已选记录
+  function switchView(id) {
+    if (id === viewId) return
+    setViewId(id)
+    setKeyword(''); setRole(''); setCat(''); setBuyer(''); setOrg('')
+    setPicked(null)
   }
 
   // 筛选 / 排序
@@ -123,7 +138,9 @@ export default function CostLedger() {
 
   return (
     <div className="flex flex-col gap-4 animate-page-in">
-      <Header isAdmin={isAdmin} loading={loading} onReload={load} />
+      <Header isAdmin={isAdmin} loading={loading} onReload={load} shareUrl={`${TEABLE_BASE}/${viewId}`} />
+
+      <ViewTabs views={views} current={viewId} onSwitch={switchView} loading={loading} />
 
       <StatGrid s={stats} activeRole={role} onRoleClick={setRole} />
 
@@ -166,7 +183,7 @@ export default function CostLedger() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-function Header({ isAdmin, loading, onReload }) {
+function Header({ isAdmin, loading, onReload, shareUrl }) {
   return (
     <div className="flex items-center justify-between gap-4 flex-wrap">
       <div className="flex items-center gap-2">
@@ -184,12 +201,42 @@ function Header({ isAdmin, loading, onReload }) {
           <RefreshCw className="w-4 h-4"
             style={{ color: 'var(--muted)', animation: loading ? 'spin 1s linear infinite' : '' }} strokeWidth={1.75} />
         </button>
-        <a href={TEABLE_SHARE} target="_blank" rel="noopener noreferrer"
+        <a href={shareUrl} target="_blank" rel="noopener noreferrer"
           className="press flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium"
           style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)' }}>
           <ExternalLink className="w-4 h-4" strokeWidth={1.75} />原表
         </a>
       </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 视图切换 tabs：极简风，激活 tab 带主色下划线
+function ViewTabs({ views, current, onSwitch, loading }) {
+  if (!views.length) return null
+  return (
+    <div className="flex items-center gap-1 overflow-x-auto px-1 -mx-1"
+      style={{ borderBottom: '1px solid var(--border)' }}>
+      {views.map(v => {
+        const active = v.id === current
+        return (
+          <button key={v.id}
+            onClick={() => onSwitch(v.id)}
+            disabled={loading && active}
+            className="view-tab press relative px-3 py-2 text-[12.5px] font-medium whitespace-nowrap transition-colors shrink-0"
+            style={{
+              color: active ? '#6366F1' : 'var(--muted)',
+              fontWeight: active ? 600 : 500,
+            }}>
+            {v.name}
+            {active && (
+              <span className="absolute left-3 right-3 bottom-0 h-[2px] rounded-t"
+                style={{ background: '#6366F1' }} />
+            )}
+          </button>
+        )
+      })}
     </div>
   )
 }

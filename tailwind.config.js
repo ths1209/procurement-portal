@@ -23,6 +23,7 @@ export default {
         'fade-in':    'fadeIn 0.22s ease-out both',
         'slide-down': 'slideDown 0.26s cubic-bezier(0.22,1,0.36,1) both',
         'spring-in':  'springIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both',
+        'slide-in-right': 'slideInRight 0.28s cubic-bezier(0.22,1,0.36,1) both',
       },
       keyframes: {
         pageIn:    { from:{ opacity:'0', transform:'translateY(22px)' }, to:{ opacity:'1', transform:'translateY(0)' } },
@@ -31,6 +32,7 @@ export default {
         fadeIn:    { from:{ opacity:'0' },                              to:{ opacity:'1' } },
         slideDown: { from:{ opacity:'0', transform:'translateY(-10px)' },to:{ opacity:'1', transform:'translateY(0)' } },
         springIn:  { from:{ opacity:'0', transform:'scale(0.9) translateY(16px)' }, to:{ opacity:'1', transform:'scale(1) translateY(0)' } },
+        slideInRight: { from:{ opacity:'0', transform:'translateX(24px)' }, to:{ opacity:'1', transform:'translateX(0)' } },
       },
     },
   },

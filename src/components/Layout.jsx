@@ -13,7 +13,7 @@ const NAV = [
   { to: '/okr-report', label: 'OKR 进度',    icon: TrendingUp, okrOnly: true },
   { to: '/projects',   label: '项目进度',    icon: ClipboardList, hideGroupPurchase: true },
   { to: '/reviews',    label: '百万项目评审', icon: Medal           },
-  { to: '/cost-ledger',label: '成本台账',    icon: Wallet, admin: true },
+  { to: '/cost-ledger',label: '成本台账',    icon: Wallet },
   { to: '/consulting', label: '咨询赋能台账', icon: BookOpen, opsOnly: true },
   { to: '/admin',      label: '用户管理',    icon: Users, admin: true },
 ]

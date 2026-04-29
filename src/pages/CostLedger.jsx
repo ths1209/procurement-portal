@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   Wallet, Search, Loader2, AlertCircle, ExternalLink, X,
-  Crown, User, Sparkles, FileText, TrendingDown,
+  Crown, User, Sparkles, FileText, TrendingDown, Users,
   Calendar, Paperclip, Save, Edit3, SlidersHorizontal,
-  Check, ChevronDown, Star, RefreshCw,
+  Check, ChevronDown, Star, RefreshCw, Handshake,
 } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { useAuth } from '../contexts/AuthContext'
@@ -13,18 +13,20 @@ import {
 } from '../lib/teableCostLedger'
 
 // 角色 → 颜色（柔和色块，非渐变）
+// 真实选项：主导者 / 谈判者 / 执行者
+const ROLE_KEYS = ['主导者', '谈判者', '执行者']
 const ROLE_STYLE = {
-  '主导者':  { bg: 'rgba(239,68,68,0.10)',  color: '#DC2626', icon: Crown,    label: '主导者' },
-  '参与者':  { bg: 'rgba(99,102,241,0.10)', color: '#4F46E5', icon: Sparkles, label: '参与者' },
-  '支持者':  { bg: 'rgba(14,165,233,0.10)', color: '#0369A1', icon: User,     label: '支持者' },
+  '主导者': { bg: 'rgba(239,68,68,0.10)',  color: '#DC2626', icon: Crown,     label: '主导者' },
+  '谈判者': { bg: 'rgba(99,102,241,0.10)', color: '#4F46E5', icon: Handshake, label: '谈判者' },
+  '执行者': { bg: 'rgba(16,185,129,0.10)', color: '#059669', icon: Sparkles,  label: '执行者' },
 }
 const ROLE_FALLBACK = { bg: 'rgba(100,116,139,0.10)', color: '#475569', icon: User, label: '未分类' }
 
 // 详情抽屉里用渐变
 const ROLE_GRADIENT = {
   '主导者': 'linear-gradient(135deg,#F59E0B,#EF4444)',
-  '参与者': 'linear-gradient(135deg,#6366F1,#8B5CF6)',
-  '支持者': 'linear-gradient(135deg,#0EA5E9,#22D3EE)',
+  '谈判者': 'linear-gradient(135deg,#6366F1,#8B5CF6)',
+  '执行者': 'linear-gradient(135deg,#10B981,#22D3EE)',
 }
 
 const TEABLE_SHARE = 'https://yach-teable.zhiyinlou.com/base/bsezwCnyl2rAB8R4wFT/table/tbl4e5Cuu6nlNw19uqz/viw4NKBSKkxIo1kOrlK'
@@ -105,7 +107,7 @@ export default function CostLedger() {
 
   // 概览统计：按三个角色分别计数
   const stats = useMemo(() => {
-    const byRole = { '主导者': 0, '参与者': 0, '支持者': 0 }
+    const byRole = Object.fromEntries(ROLE_KEYS.map(k => [k, 0]))
     for (const r of rows) {
       const k = r.fields[F.role]
       if (byRole[k] !== undefined) byRole[k] += 1
@@ -194,11 +196,12 @@ function Header({ isAdmin, loading, onReload }) {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 function StatGrid({ s, activeRole, onRoleClick }) {
-  const items = [
-    { key: '主导者', color: '#DC2626', icon: Crown,    value: s['主导者'] || 0 },
-    { key: '参与者', color: '#4F46E5', icon: Sparkles, value: s['参与者'] || 0 },
-    { key: '支持者', color: '#0369A1', icon: User,     value: s['支持者'] || 0 },
-  ]
+  const items = ROLE_KEYS.map(k => ({
+    key: k,
+    color: ROLE_STYLE[k].color,
+    icon: ROLE_STYLE[k].icon,
+    value: s[k] || 0,
+  }))
   return (
     <div className="grid grid-cols-3 gap-3">
       {items.map(it => {

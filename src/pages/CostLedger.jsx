@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState, useCallback, Fragment } from 'react'
-import { Loader2, AlertCircle, Check, Search, RefreshCcw, Wallet, ChevronDown, ChevronRight, Rows3, ArrowUpDown, Filter, Layers } from 'lucide-react'
+import { Loader2, AlertCircle, Check, Search, RefreshCcw, Wallet, ChevronDown, ChevronRight, Rows3, ArrowUpDown, Filter, Layers, Table, ClipboardEdit } from 'lucide-react'
 import {
   loadView, updateCell, pillColors, formatNumber, looksLikeCurrency,
   VIEW_TABS, OPERATOR_LABELS, formatFilterValue,
 } from '../lib/teableCostLedger'
+import CostLedgerFill from './CostLedgerFill'
 
 const WIDTH_LS_KEY  = 'cost_ledger_widths_v1'
 const HEIGHT_LS_KEY = 'cost_ledger_rowheight_v1'
+const MODE_LS_KEY   = 'cost_ledger_mode_v1'
 
 const ROW_HEIGHTS = [
   { id: 'compact',  label: '紧凑', px: 32 },
@@ -25,7 +27,12 @@ export default function CostLedger() {
   const [cellState, setCellState]   = useState({})
   const [rowHeights, setRowHeights] = useState(() => loadLS(HEIGHT_LS_KEY, {}))
   const [collapsed, setCollapsed]   = useState({})  // { viewId: { groupKey: true } }
+  const [mode, setMode]             = useState(() => loadLS(MODE_LS_KEY, 'table'))  // 'table' | 'fill'
   const widthsRef                   = useRef(loadLS(WIDTH_LS_KEY, {}))
+
+  function changeMode(next) {
+    setMode(next); saveLS(MODE_LS_KEY, next); setKw('')
+  }
 
   const data = cache[activeView]
   const rowHeightId = rowHeights[activeView] ?? 'normal'
@@ -116,6 +123,8 @@ export default function CostLedger() {
   const activeTab = VIEW_TABS.find(v => v.id === activeView)
   const collapsedMap = collapsed[activeView] ?? {}
 
+  const isFill = mode === 'fill'
+
   return (
     <div className="-m-5 lg:-m-7 h-[calc(100vh-2.5rem)] lg:h-screen flex flex-col" style={{ background: 'var(--bg)' }}>
       {/* 顶栏 */}
@@ -128,20 +137,29 @@ export default function CostLedger() {
           <h1 className="text-[17px] font-bold leading-tight" style={{ color: 'var(--text)' }}>成本台账</h1>
           <p className="text-[11px] mt-0.5" style={{ color: 'var(--muted)' }}>
             {activeTab?.name} · 共 {rows.length} 条{kw.trim() && ` · 筛选 ${filtered.length} 条`}
+            {isFill && ' · 项目维度维护'}
           </p>
         </div>
-        <div className="relative">
-          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted)' }} />
-          <input value={kw} onChange={e => setKw(e.target.value)} placeholder="搜索任意字段…"
-            className="pl-7 pr-3 py-2 text-[13px] rounded-xl outline-none transition-colors focus:border-indigo-400"
-            style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', width: 240 }} />
-        </div>
-        <RowHeightPicker value={rowHeightId} onChange={setRowHeight} />
-        <button onClick={() => load(activeView)} disabled={data?.loading}
-          className="press flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-medium disabled:opacity-60 transition-colors"
-          style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)' }}>
-          <RefreshCcw className={`w-3.5 h-3.5 ${data?.loading ? 'animate-spin' : ''}`} />刷新
-        </button>
+
+        {/* 模式切换 */}
+        <ModeToggle mode={mode} onChange={changeMode} />
+
+        {!isFill && (
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted)' }} />
+            <input value={kw} onChange={e => setKw(e.target.value)} placeholder="搜索任意字段…"
+              className="pl-7 pr-3 py-2 text-[13px] rounded-xl outline-none transition-colors focus:border-indigo-400"
+              style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', width: 240 }} />
+          </div>
+        )}
+        {!isFill && <RowHeightPicker value={rowHeightId} onChange={setRowHeight} />}
+        {!isFill && (
+          <button onClick={() => load(activeView)} disabled={data?.loading}
+            className="press flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-medium disabled:opacity-60 transition-colors"
+            style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)' }}>
+            <RefreshCcw className={`w-3.5 h-3.5 ${data?.loading ? 'animate-spin' : ''}`} />刷新
+          </button>
+        )}
       </header>
 
       {/* 视图 Tabs */}
@@ -160,37 +178,73 @@ export default function CostLedger() {
         })}
       </div>
 
-      {/* Sort / Filter / Group 指示条 */}
-      <ViewConfigBar sorts={sorts} filters={filters} group={group} conjunction={data?.filterConjunction} />
+      {/* 表格模式专属：Sort / Filter / Group 指示条 */}
+      {!isFill && <ViewConfigBar sorts={sorts} filters={filters} group={group} conjunction={data?.filterConjunction} />}
 
-      {/* 错误 */}
-      {data?.err && (
+      {/* 错误（表格模式；填报模式内部自处理） */}
+      {!isFill && data?.err && (
         <div className="mx-6 mb-3 px-4 py-2.5 rounded-xl flex items-center gap-2 text-[12px]"
           style={{ background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FCA5A5' }}>
           <AlertCircle className="w-3.5 h-3.5 shrink-0" />{data.err}
         </div>
       )}
 
-      {/* 表格 */}
-      <div className="flex-1 mx-6 mb-6 rounded-2xl overflow-hidden flex flex-col"
-        style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        {data?.loading ? (
-          <div className="flex-1 flex items-center justify-center" style={{ color: 'var(--muted)' }}>
-            <Loader2 className="w-5 h-5 animate-spin" />
-          </div>
-        ) : columns.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center text-[13px]" style={{ color: 'var(--muted)' }}>
-            暂无数据
-          </div>
-        ) : (
-          <Grid cols={columns} grouped={grouped} group={group}
-            headerLines={headerLines} rowHeightPx={rowHeightPx} collapsedMap={collapsedMap}
-            cellState={cellState}
-            onSave={saveCell}
-            onResize={(colId, w) => setColumnWidth(activeView, colId, w)}
-            onToggleGroup={toggleGroup} />
-        )}
-      </div>
+      {/* 主体：表格 / 填报 */}
+      {isFill ? (
+        <CostLedgerFill
+          activeView={activeView} data={data}
+          loading={!!data?.loading} err={data?.err}
+          kw={kw} setKw={setKw}
+          onReload={() => load(activeView)}
+          onSave={saveCell}
+          cellState={cellState} />
+      ) : (
+        <div className="flex-1 mx-6 mb-6 rounded-2xl overflow-hidden flex flex-col"
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          {data?.loading ? (
+            <div className="flex-1 flex items-center justify-center" style={{ color: 'var(--muted)' }}>
+              <Loader2 className="w-5 h-5 animate-spin" />
+            </div>
+          ) : columns.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center text-[13px]" style={{ color: 'var(--muted)' }}>
+              暂无数据
+            </div>
+          ) : (
+            <Grid cols={columns} grouped={grouped} group={group}
+              headerLines={headerLines} rowHeightPx={rowHeightPx} collapsedMap={collapsedMap}
+              cellState={cellState}
+              onSave={saveCell}
+              onResize={(colId, w) => setColumnWidth(activeView, colId, w)}
+              onToggleGroup={toggleGroup} />
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ═══════════════════════════ 模式切换 ═══════════════════════════
+function ModeToggle({ mode, onChange }) {
+  const items = [
+    { id: 'table', label: '表格',   icon: Table },
+    { id: 'fill',  label: '项目填报', icon: ClipboardEdit },
+  ]
+  return (
+    <div className="inline-flex items-center p-0.5 rounded-xl"
+      style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+      {items.map(it => {
+        const active = mode === it.id
+        const Icon = it.icon
+        return (
+          <button key={it.id} onClick={() => onChange(it.id)}
+            className="press flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-all"
+            style={active
+              ? { background: 'var(--surface)', color: 'var(--text)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }
+              : { background: 'transparent', color: 'var(--muted)' }}>
+            <Icon className="w-3.5 h-3.5" />{it.label}
+          </button>
+        )
+      })}
     </div>
   )
 }

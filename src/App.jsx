@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard'
 import Projects from './pages/Projects'
 import Reviews from './pages/Reviews'
 import Consulting from './pages/Consulting'
+import CostLedger from './pages/CostLedger'
 import AIWishPool from './pages/AIWishPool'
 import OKRReport from './pages/OKRReport'
 import AdminPanel from './pages/AdminPanel'
@@ -54,6 +55,9 @@ function AnimatedRoutes() {
       } />
       <Route path="/consulting" element={
         <ProtectedRoute requireOps><Layout><Consulting /></Layout></ProtectedRoute>
+      } />
+      <Route path="/cost-ledger" element={
+        <ProtectedRoute><Layout><CostLedger /></Layout></ProtectedRoute>
       } />
       <Route path="/admin" element={
         <ProtectedRoute requireAdmin><Layout><AdminPanel /></Layout></ProtectedRoute>

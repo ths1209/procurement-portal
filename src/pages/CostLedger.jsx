@@ -1,35 +1,45 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { Loader2, AlertCircle, Check, Search, RefreshCcw, Wallet, ChevronDown } from 'lucide-react'
-import { loadView, updateCell, pillColors, formatNumber, looksLikeCurrency, VIEW_TABS } from '../lib/teableCostLedger'
+import { useEffect, useMemo, useRef, useState, useCallback, Fragment } from 'react'
+import { Loader2, AlertCircle, Check, Search, RefreshCcw, Wallet, ChevronDown, ChevronRight, Rows3, ArrowUpDown, Filter, Layers } from 'lucide-react'
+import {
+  loadView, updateCell, pillColors, formatNumber, looksLikeCurrency,
+  VIEW_TABS, OPERATOR_LABELS, formatFilterValue,
+} from '../lib/teableCostLedger'
 
-const WIDTH_LS_KEY = 'cost_ledger_widths_v1'
+const WIDTH_LS_KEY  = 'cost_ledger_widths_v1'
+const HEIGHT_LS_KEY = 'cost_ledger_rowheight_v1'
 
-function loadWidths() {
-  try { return JSON.parse(localStorage.getItem(WIDTH_LS_KEY) || '{}') } catch { return {} }
-}
-function saveWidths(map) {
-  try { localStorage.setItem(WIDTH_LS_KEY, JSON.stringify(map)) } catch {}
-}
+const ROW_HEIGHTS = [
+  { id: 'compact',  label: '紧凑', px: 32 },
+  { id: 'normal',   label: '标准', px: 44 },
+  { id: 'loose',    label: '宽松', px: 64 },
+  { id: 'extra',    label: '超宽', px: 96 },
+]
+
+function loadLS(key, fallback) { try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback } catch { return fallback } }
+function saveLS(key, v) { try { localStorage.setItem(key, JSON.stringify(v)) } catch {} }
 
 export default function CostLedger() {
   const [activeView, setActiveView] = useState(VIEW_TABS[0].id)
-  const [cache, setCache]           = useState({})   // viewId → { columns, rows, loading, err }
+  const [cache, setCache]           = useState({})
   const [kw, setKw]                 = useState('')
-  const [cellState, setCellState]   = useState({})   // recordId::field → saving|ok|err:xxx
-  const widthsRef                   = useRef(loadWidths())
+  const [cellState, setCellState]   = useState({})
+  const [rowHeights, setRowHeights] = useState(() => loadLS(HEIGHT_LS_KEY, {}))
+  const [collapsed, setCollapsed]   = useState({})  // { viewId: { groupKey: true } }
+  const widthsRef                   = useRef(loadLS(WIDTH_LS_KEY, {}))
 
   const data = cache[activeView]
+  const rowHeightId = rowHeights[activeView] ?? 'normal'
+  const rowHeightPx = (ROW_HEIGHTS.find(r => r.id === rowHeightId) ?? ROW_HEIGHTS[1]).px
 
   const load = useCallback(async (viewId) => {
     setCache(c => ({ ...c, [viewId]: { ...(c[viewId] ?? {}), loading: true, err: '' } }))
     try {
-      const { columns, records } = await loadView(viewId)
-      // 应用持久化的列宽覆写
+      const resp = await loadView(viewId)
       const savedForView = widthsRef.current[viewId] ?? {}
-      const mergedCols = columns.map(c => savedForView[c.id] ? { ...c, width: savedForView[c.id] } : c)
-      setCache(c => ({ ...c, [viewId]: { columns: mergedCols, rows: records, loading: false, err: '' } }))
+      const mergedCols = resp.columns.map(c => savedForView[c.id] ? { ...c, width: savedForView[c.id] } : c)
+      setCache(c => ({ ...c, [viewId]: { ...resp, columns: mergedCols, loading: false, err: '' } }))
     } catch(e) {
-      setCache(c => ({ ...c, [viewId]: { columns: [], rows: [], loading: false, err: e.message } }))
+      setCache(c => ({ ...c, [viewId]: { columns: [], records: [], sorts: [], filters: [], group: null, headerLines: 1, loading: false, err: e.message } }))
     }
   }, [])
 
@@ -37,12 +47,20 @@ export default function CostLedger() {
 
   function setColumnWidth(viewId, colId, width) {
     setCache(c => {
-      const v = c[viewId]
-      if (!v) return c
+      const v = c[viewId]; if (!v) return c
       return { ...c, [viewId]: { ...v, columns: v.columns.map(col => col.id === colId ? { ...col, width } : col) } }
     })
     widthsRef.current = { ...widthsRef.current, [viewId]: { ...(widthsRef.current[viewId] ?? {}), [colId]: width } }
-    saveWidths(widthsRef.current)
+    saveLS(WIDTH_LS_KEY, widthsRef.current)
+  }
+
+  function setRowHeight(id) {
+    const next = { ...rowHeights, [activeView]: id }
+    setRowHeights(next); saveLS(HEIGHT_LS_KEY, next)
+  }
+
+  function toggleGroup(key) {
+    setCollapsed(c => ({ ...c, [activeView]: { ...(c[activeView] ?? {}), [key]: !(c[activeView]?.[key]) } }))
   }
 
   async function saveCell(recordId, fieldName, value) {
@@ -51,49 +69,56 @@ export default function CostLedger() {
     try {
       await updateCell(recordId, fieldName, value)
       setCache(c => {
-        const v = c[activeView]
-        if (!v) return c
-        return { ...c, [activeView]: { ...v, rows: v.rows.map(r => r.id === recordId ? { ...r, fields: { ...r.fields, [fieldName]: value } } : r) } }
+        const v = c[activeView]; if (!v) return c
+        return { ...c, [activeView]: { ...v, records: v.records.map(r => r.id === recordId ? { ...r, fields: { ...r.fields, [fieldName]: value } } : r) } }
       })
       setCellState(s => ({ ...s, [key]: 'ok' }))
-      setTimeout(() => setCellState(s => {
-        if (s[key] !== 'ok') return s
-        const { [key]: _, ...rest } = s
-        return rest
-      }), 1200)
+      setTimeout(() => setCellState(s => { if (s[key] !== 'ok') return s; const { [key]: _, ...rest } = s; return rest }), 1200)
     } catch(e) {
       setCellState(s => ({ ...s, [key]: 'err:' + e.message }))
-      setTimeout(() => setCellState(s => {
-        const cur = s[key]
-        if (!cur || !cur.startsWith('err')) return s
-        const { [key]: _, ...rest } = s
-        return rest
-      }), 3000)
+      setTimeout(() => setCellState(s => { const cur = s[key]; if (!cur || !cur.startsWith('err')) return s; const { [key]: _, ...rest } = s; return rest }), 4000)
     }
   }
 
-  const rows    = data?.rows ?? []
-  const columns = data?.columns ?? []
+  const rows     = data?.records ?? []
+  const columns  = data?.columns ?? []
+  const sorts    = data?.sorts   ?? []
+  const filters  = data?.filters ?? []
+  const group    = data?.group   ?? null
+  const headerLines = data?.headerLines ?? 1
 
   const filtered = useMemo(() => {
     if (!kw.trim()) return rows
     const q = kw.trim().toLowerCase()
-    return rows.filter(r =>
-      Object.values(r.fields).some(v => {
-        if (v == null) return false
-        if (typeof v === 'string') return v.toLowerCase().includes(q)
-        if (typeof v === 'number') return String(v).includes(q)
-        if (Array.isArray(v)) return v.some(x => typeof x === 'string' && x.toLowerCase().includes(q))
-        return false
-      })
-    )
+    return rows.filter(r => Object.values(r.fields).some(v => {
+      if (v == null) return false
+      if (typeof v === 'string') return v.toLowerCase().includes(q)
+      if (typeof v === 'number') return String(v).includes(q)
+      if (Array.isArray(v)) return v.some(x => typeof x === 'string' && x.toLowerCase().includes(q))
+      return false
+    }))
   }, [rows, kw])
 
+  // 按 group 字段聚合
+  const grouped = useMemo(() => {
+    if (!group) return [{ key: '__all__', value: null, rows: filtered, hasHeader: false }]
+    const out = []
+    let cur = null
+    for (const r of filtered) {
+      const v = r.fields[group.fieldName]
+      const key = Array.isArray(v) ? v.join(',') : String(v ?? '')
+      if (!cur || cur.key !== key) { cur = { key, value: v, rows: [], hasHeader: true }; out.push(cur) }
+      cur.rows.push(r)
+    }
+    return out
+  }, [filtered, group])
+
   const activeTab = VIEW_TABS.find(v => v.id === activeView)
+  const collapsedMap = collapsed[activeView] ?? {}
 
   return (
     <div className="-m-5 lg:-m-7 h-[calc(100vh-2.5rem)] lg:h-screen flex flex-col" style={{ background: 'var(--bg)' }}>
-      {/* 顶栏：标题 + 操作 */}
+      {/* 顶栏 */}
       <header className="px-6 pt-5 pb-3 flex items-center gap-3">
         <div className="w-9 h-9 rounded-xl flex items-center justify-center"
           style={{ background: 'linear-gradient(135deg,#6366F1,#8B5CF6)' }}>
@@ -111,6 +136,7 @@ export default function CostLedger() {
             className="pl-7 pr-3 py-2 text-[13px] rounded-xl outline-none transition-colors focus:border-indigo-400"
             style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', width: 240 }} />
         </div>
+        <RowHeightPicker value={rowHeightId} onChange={setRowHeight} />
         <button onClick={() => load(activeView)} disabled={data?.loading}
           className="press flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-medium disabled:opacity-60 transition-colors"
           style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)' }}>
@@ -124,23 +150,20 @@ export default function CostLedger() {
           const active = v.id === activeView
           return (
             <button key={v.id} onClick={() => setActiveView(v.id)}
-              className={`press flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12.5px] font-medium whitespace-nowrap transition-all`}
-              style={active ? {
-                background: 'var(--text)',
-                color: 'var(--bg)',
-              } : {
-                background: 'var(--surface)',
-                color: 'var(--muted)',
-                border: '1px solid var(--border)',
-              }}>
-              <span style={{ fontSize: 10 }}>{v.emoji}</span>
-              {v.name}
+              className="press flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12.5px] font-medium whitespace-nowrap transition-all"
+              style={active
+                ? { background: 'var(--text)', color: 'var(--bg)' }
+                : { background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)' }}>
+              <span style={{ fontSize: 10 }}>{v.emoji}</span>{v.name}
             </button>
           )
         })}
       </div>
 
-      {/* 错误条 */}
+      {/* Sort / Filter / Group 指示条 */}
+      <ViewConfigBar sorts={sorts} filters={filters} group={group} conjunction={data?.filterConjunction} />
+
+      {/* 错误 */}
       {data?.err && (
         <div className="mx-6 mb-3 px-4 py-2.5 rounded-xl flex items-center gap-2 text-[12px]"
           style={{ background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FCA5A5' }}>
@@ -148,7 +171,7 @@ export default function CostLedger() {
         </div>
       )}
 
-      {/* 网格卡片 */}
+      {/* 表格 */}
       <div className="flex-1 mx-6 mb-6 rounded-2xl overflow-hidden flex flex-col"
         style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
         {data?.loading ? (
@@ -160,18 +183,108 @@ export default function CostLedger() {
             暂无数据
           </div>
         ) : (
-          <Grid cols={columns} rows={filtered} cellState={cellState}
+          <Grid cols={columns} grouped={grouped} group={group}
+            headerLines={headerLines} rowHeightPx={rowHeightPx} collapsedMap={collapsedMap}
+            cellState={cellState}
             onSave={saveCell}
-            onResize={(colId, w) => setColumnWidth(activeView, colId, w)} />
+            onResize={(colId, w) => setColumnWidth(activeView, colId, w)}
+            onToggleGroup={toggleGroup} />
         )}
       </div>
     </div>
   )
 }
 
+// ═══════════════════════════ 顶部配置指示 ═══════════════════════════
+function ViewConfigBar({ sorts, filters, group, conjunction }) {
+  const [openFilters, setOpenFilters] = useState(false)
+  if (sorts.length === 0 && filters.length === 0 && !group) return null
+
+  return (
+    <div className="px-6 pb-3 flex items-center gap-2 flex-wrap text-[11.5px]">
+      {group && (
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg"
+          style={{ background: 'rgba(139,92,246,0.08)', color: '#7C3AED' }}>
+          <Layers className="w-3 h-3" /> 分组：{group.fieldName}
+        </span>
+      )}
+      {sorts.length > 0 && (
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg"
+          style={{ background: 'rgba(99,102,241,0.08)', color: '#4F46E5' }}>
+          <ArrowUpDown className="w-3 h-3" /> 排序：
+          {sorts.map((s, i) => (
+            <span key={s.fieldId}>{i > 0 && '，'}{s.fieldName} {s.order === 'asc' ? '↑' : '↓'}</span>
+          ))}
+        </span>
+      )}
+      {filters.length > 0 && (
+        <div className="relative">
+          <button onClick={() => setOpenFilters(o => !o)}
+            className="press inline-flex items-center gap-1 px-2.5 py-1 rounded-lg"
+            style={{ background: 'rgba(16,185,129,0.08)', color: '#047857' }}>
+            <Filter className="w-3 h-3" /> 筛选 {filters.length} 条
+            <ChevronDown className="w-3 h-3" />
+          </button>
+          {openFilters && (
+            <div className="absolute left-0 top-full mt-1 rounded-xl shadow-lg p-2 z-20 min-w-[280px]"
+              style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+              <div className="text-[10px] mb-1.5 uppercase tracking-wider" style={{ color: 'var(--muted)' }}>
+                规则（{conjunction === 'or' ? '任一满足' : '全部满足'}）
+              </div>
+              {filters.map((f, i) => (
+                <div key={i} className="px-2 py-1.5 text-[11.5px] flex items-center gap-1.5 flex-wrap"
+                  style={{ color: 'var(--text)' }}>
+                  <span className="font-medium">{f.fieldName}</span>
+                  <span style={{ color: 'var(--muted)' }}>{OPERATOR_LABELS[f.operator] ?? f.operator}</span>
+                  <span className="font-mono">{formatFilterValue(f.value)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function RowHeightPicker({ value, onChange }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+  const cur = ROW_HEIGHTS.find(r => r.id === value) ?? ROW_HEIGHTS[1]
+  return (
+    <div ref={ref} className="relative">
+      <button onClick={() => setOpen(o => !o)}
+        className="press flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-medium transition-colors"
+        style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)' }}>
+        <Rows3 className="w-3.5 h-3.5" />行高：{cur.label}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 rounded-xl shadow-lg p-1 z-20 min-w-[120px]"
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          {ROW_HEIGHTS.map(r => (
+            <div key={r.id} onClick={() => { onChange(r.id); setOpen(false) }}
+              className="px-3 py-1.5 rounded-lg cursor-pointer text-[12px] flex items-center justify-between hover:bg-black/5 dark:hover:bg-white/5"
+              style={{ color: 'var(--text)' }}>
+              <span>{r.label}</span>
+              {r.id === value && <Check className="w-3 h-3" style={{ color: '#6366F1' }} />}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ═══════════════════════════ Grid ═══════════════════════════
-function Grid({ cols, rows, cellState, onSave, onResize }) {
+function Grid({ cols, grouped, group, headerLines, rowHeightPx, collapsedMap, cellState, onSave, onResize, onToggleGroup }) {
   const [first, ...rest] = cols
+  const headerMinH = Math.max(44, headerLines * 18 + 20)
 
   return (
     <div className="flex-1 overflow-auto">
@@ -182,15 +295,28 @@ function Grid({ cols, rows, cellState, onSave, onResize }) {
         </colgroup>
         <thead>
           <tr>
-            <HeaderCell col={first} sticky onResize={onResize} />
-            {rest.map(c => <HeaderCell key={c.id} col={c} onResize={onResize} />)}
+            <HeaderCell col={first} sticky onResize={onResize} lines={headerLines} minH={headerMinH} />
+            {rest.map(c => <HeaderCell key={c.id} col={c} onResize={onResize} lines={headerLines} minH={headerMinH} />)}
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, i) => (
-            <Row key={r.id} row={r} cols={cols} idx={i} cellState={cellState} onSave={onSave} />
-          ))}
-          {rows.length === 0 && (
+          {grouped.map(g => {
+            const isCollapsed = g.hasHeader && collapsedMap[g.key]
+            const rowsToRender = isCollapsed ? [] : g.rows
+            return (
+              <Fragment key={g.key}>
+                {g.hasHeader && (
+                  <GroupHeader group={group} gData={g} colSpan={cols.length}
+                    isCollapsed={isCollapsed} onToggle={() => onToggleGroup(g.key)} cols={cols} />
+                )}
+                {rowsToRender.map((r, i) => (
+                  <Row key={r.id} row={r} cols={cols} idx={i} rowHeightPx={rowHeightPx}
+                    cellState={cellState} onSave={onSave} />
+                ))}
+              </Fragment>
+            )
+          })}
+          {grouped.every(g => g.rows.length === 0) && (
             <tr>
               <td colSpan={cols.length} className="text-center py-12 text-[12px]"
                 style={{ color: 'var(--muted)' }}>没有匹配的记录</td>
@@ -202,41 +328,32 @@ function Grid({ cols, rows, cellState, onSave, onResize }) {
   )
 }
 
-function HeaderCell({ col, sticky, onResize }) {
+function HeaderCell({ col, sticky, onResize, lines, minH }) {
   const startResize = (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    const startX = e.clientX
-    const startW = col.width
-    function onMove(ev) {
-      const w = Math.max(80, startW + (ev.clientX - startX))
-      onResize(col.id, w)
-    }
-    function onUp() {
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-      document.body.style.cursor = ''
-    }
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
-    document.body.style.cursor = 'col-resize'
+    e.preventDefault(); e.stopPropagation()
+    const startX = e.clientX, startW = col.width
+    function onMove(ev) { onResize(col.id, Math.max(80, startW + (ev.clientX - startX))) }
+    function onUp() { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); document.body.style.cursor = '' }
+    document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp); document.body.style.cursor = 'col-resize'
   }
-
   return (
-    <th className="text-left px-3 py-2.5 font-semibold text-[11.5px] tracking-wide"
+    <th className="text-left px-3 py-2 font-semibold text-[11.5px] tracking-wide"
       style={{
         background: 'var(--surface2)',
         color: 'var(--text)',
         borderBottom: '1px solid var(--border)',
-        position: 'sticky',
-        top: 0,
+        position: 'sticky', top: 0,
         ...(sticky ? { left: 0, zIndex: 3 } : { zIndex: 2 }),
-        whiteSpace: 'nowrap',
+        verticalAlign: 'top', minHeight: minH, height: minH,
       }}
       title={col.description || col.name}>
-      <div className="flex items-center gap-1.5 select-none">
-        <span className="truncate" style={{ maxWidth: col.width - 24 }}>{col.name}</span>
-        {col.isComputed && <span className="text-[9px] opacity-50">ƒ</span>}
+      <div className="flex items-start gap-1.5 select-none" style={{ minHeight: minH - 16 }}>
+        <span style={{
+          display: '-webkit-box',
+          WebkitLineClamp: lines, WebkitBoxOrient: 'vertical',
+          overflow: 'hidden', wordBreak: 'break-word', lineHeight: 1.4,
+        }}>{col.name}</span>
+        {col.isComputed && <span className="text-[9px] opacity-50 shrink-0">ƒ</span>}
       </div>
       <div onMouseDown={startResize}
         className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-indigo-400/40 active:bg-indigo-400/70" />
@@ -244,21 +361,84 @@ function HeaderCell({ col, sticky, onResize }) {
   )
 }
 
-function Row({ row, cols, idx, cellState, onSave }) {
+function GroupHeader({ group, gData, colSpan, isCollapsed, onToggle, cols }) {
+  // 计算数字列的统计
+  const stats = useMemo(() => {
+    const numCols = cols.filter(c => c.kind === 'number' || (c.isComputed && c.type === 'formula'))
+    const result = {}
+    for (const c of numCols) {
+      let sum = 0, count = 0
+      for (const r of gData.rows) {
+        const v = r.fields[c.name]
+        if (typeof v === 'number') { sum += v; count++ }
+      }
+      if (count > 0) result[c.name] = { sum, count }
+    }
+    return result
+  }, [gData.rows, cols])
+
+  // 选一个主要金额字段展示
+  const showStatKey = Object.keys(stats).find(n => looksLikeCurrency(n))
+  const showStat = showStatKey ? stats[showStatKey] : null
+
+  let label = gData.value
+  if (Array.isArray(label)) label = label.join(' / ')
+  const groupChoice = (cols.find(c => c.name === group.fieldName)?.options?.choices ?? []).find(ch => ch.name === label)
+  const colors = groupChoice ? pillColors(groupChoice.color) : null
+
+  return (
+    <tr>
+      <td colSpan={colSpan}
+        className="px-4 py-2 cursor-pointer select-none"
+        onClick={onToggle}
+        style={{
+          background: 'linear-gradient(90deg, rgba(99,102,241,0.06), rgba(99,102,241,0) 60%)',
+          borderBottom: '1px solid var(--border)',
+          borderTop: '1px solid var(--border)',
+          position: 'sticky', left: 0,
+        }}>
+        <div className="flex items-center gap-2 text-[12px]">
+          {isCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          <span className="font-semibold" style={{ color: 'var(--muted)' }}>{group.fieldName}：</span>
+          {colors ? (
+            <span className="px-2 py-0.5 rounded-md text-[11.5px] font-medium" style={{ background: colors.bg, color: colors.fg }}>
+              {label || '（空）'}
+            </span>
+          ) : (
+            <span className="font-semibold" style={{ color: 'var(--text)' }}>{label || '（空）'}</span>
+          )}
+          <span className="text-[11px] px-1.5 py-0.5 rounded"
+            style={{ background: 'var(--surface2)', color: 'var(--muted)' }}>
+            {gData.rows.length} 条
+          </span>
+          {showStat && (
+            <span className="ml-auto text-[11px] tabular-nums" style={{ color: 'var(--muted)' }}>
+              {showStatKey} 求和：<span className="font-semibold" style={{ color: 'var(--text)' }}>
+                ¥{showStat.sum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </span>
+          )}
+        </div>
+      </td>
+    </tr>
+  )
+}
+
+function Row({ row, cols, idx, rowHeightPx, cellState, onSave }) {
   const [first, ...rest] = cols
   const rowBg = idx % 2 === 0 ? 'var(--surface)' : 'var(--surface2)'
   return (
     <tr className="group">
-      <Cell col={first} row={row} sticky rowBg={rowBg} cellState={cellState} onSave={onSave} />
+      <Cell col={first} row={row} sticky rowBg={rowBg} rowHeightPx={rowHeightPx} cellState={cellState} onSave={onSave} />
       {rest.map(c => (
-        <Cell key={c.id} col={c} row={row} rowBg={rowBg} cellState={cellState} onSave={onSave} />
+        <Cell key={c.id} col={c} row={row} rowBg={rowBg} rowHeightPx={rowHeightPx} cellState={cellState} onSave={onSave} />
       ))}
     </tr>
   )
 }
 
 // ═══════════════════════════ Cell ═══════════════════════════
-function Cell({ col, row, sticky, rowBg, cellState, onSave }) {
+function Cell({ col, row, sticky, rowBg, rowHeightPx, cellState, onSave }) {
   const value = row.fields[col.name]
   const state = cellState[`${row.id}::${col.name}`]
   const [editing, setEditing] = useState(false)
@@ -266,27 +446,25 @@ function Cell({ col, row, sticky, rowBg, cellState, onSave }) {
   const numeric = col.kind === 'number' || (col.type === 'formula' && typeof value === 'number')
 
   const baseStyle = {
-    background: sticky ? rowBg : rowBg,
+    background: rowBg,
     borderBottom: '1px solid var(--border)',
     borderRight: '1px solid var(--border)',
     ...(sticky ? { position: 'sticky', left: 0, zIndex: 1 } : {}),
     minWidth: 0,
+    height: rowHeightPx,
   }
 
-  const handleStartEdit = () => { if (editable) setEditing(true) }
+  const handleStartEdit = () => { if (editable && !editing) setEditing(true) }
   const handleDoneEdit  = (newVal) => {
     setEditing(false)
-    if (newVal !== undefined && !deepEqual(newVal, value)) {
-      onSave(row.id, col.name, newVal)
-    }
+    if (newVal !== undefined && !deepEqual(newVal, value)) onSave(row.id, col.name, newVal)
   }
 
   return (
     <td className="p-0 align-top group-hover:[&]:brightness-[0.98] relative"
-      style={baseStyle}
-      onClick={handleStartEdit}>
+      style={baseStyle} onClick={handleStartEdit}>
       <div className={`relative ${editable ? 'cursor-text' : ''} ${numeric ? 'text-right' : ''}`}
-        style={{ minHeight: 36 }}>
+        style={{ height: '100%', maxHeight: rowHeightPx, overflow: 'auto' }}>
         {editing
           ? <Editor col={col} value={value} onDone={handleDoneEdit} />
           : <CellDisplay col={col} value={value} numeric={numeric} />
@@ -307,9 +485,7 @@ function Cell({ col, row, sticky, rowBg, cellState, onSave }) {
 
 function deepEqual(a, b) {
   if (a === b) return true
-  if (Array.isArray(a) && Array.isArray(b)) {
-    return a.length === b.length && a.every((x, i) => x === b[i])
-  }
+  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((x, i) => x === b[i])
   return false
 }
 
@@ -318,12 +494,10 @@ function CellDisplay({ col, value, numeric }) {
   if (value == null || value === '' || (Array.isArray(value) && value.length === 0)) {
     return <div className="px-3 py-2 text-[12.5px]" style={{ color: 'var(--muted)' }}>—</div>
   }
-
-  // 附件
   if (col.type === 'attachment' && Array.isArray(value)) {
     return (
       <div className="px-3 py-2 flex flex-col gap-1">
-        {value.slice(0, 3).map(f => (
+        {value.map(f => (
           <a key={f.id} href={f.presignedUrl} target="_blank" rel="noopener noreferrer"
             onClick={e => e.stopPropagation()}
             className="text-[11.5px] truncate inline-flex items-center gap-1 hover:underline"
@@ -331,55 +505,36 @@ function CellDisplay({ col, value, numeric }) {
             📎 {f.name}
           </a>
         ))}
-        {value.length > 3 && <span className="text-[10px]" style={{ color: 'var(--muted)' }}>还有 {value.length - 3} 个</span>}
       </div>
     )
   }
-
-  // 关联
   if (col.type === 'link') {
     const arr = Array.isArray(value) ? value : [value]
     return (
       <div className="px-3 py-2 flex flex-wrap gap-1">
         {arr.map((v, i) => (
           <span key={i} className="text-[11.5px] px-2 py-0.5 rounded-md"
-            style={{ background: 'rgba(99,102,241,0.08)', color: '#4F46E5' }}>
-            🔗 {v.title || v.id}
-          </span>
+            style={{ background: 'rgba(99,102,241,0.08)', color: '#4F46E5' }}>🔗 {v.title || v.id}</span>
         ))}
       </div>
     )
   }
-
-  // 单选 pill
   if (col.type === 'singleSelect' && typeof value === 'string') {
     const choice = (col.options.choices ?? []).find(c => c.name === value)
     const { bg, fg } = pillColors(choice?.color)
-    return (
-      <div className="px-3 py-2">
-        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[12px] font-medium"
-          style={{ background: bg, color: fg }}>{value}</span>
-      </div>
-    )
+    return <div className="px-3 py-2"><span className="inline-flex items-center px-2 py-0.5 rounded-md text-[12px] font-medium" style={{ background: bg, color: fg }}>{value}</span></div>
   }
-
-  // 多选 pills
   if (col.type === 'multipleSelect' && Array.isArray(value)) {
     return (
       <div className="px-3 py-2 flex flex-wrap gap-1">
         {value.map(name => {
           const choice = (col.options.choices ?? []).find(c => c.name === name)
           const { bg, fg } = pillColors(choice?.color)
-          return (
-            <span key={name} className="inline-flex items-center px-2 py-0.5 rounded-md text-[11.5px] font-medium"
-              style={{ background: bg, color: fg }}>{name}</span>
-          )
+          return <span key={name} className="inline-flex items-center px-2 py-0.5 rounded-md text-[11.5px] font-medium" style={{ background: bg, color: fg }}>{name}</span>
         })}
       </div>
     )
   }
-
-  // 数字 / 公式
   if (typeof value === 'number') {
     let text = formatNumber(value, col.options)
     if (!col.options?.formatting && looksLikeCurrency(col.name)) {
@@ -389,30 +544,12 @@ function CellDisplay({ col, value, numeric }) {
     }
     return <div className="px-3 py-2 text-[12.5px] tabular-nums font-medium" style={{ color: 'var(--text)' }}>{text}</div>
   }
-
-  // 勾选
-  if (typeof value === 'boolean') {
-    return <div className="px-3 py-2 text-[13px]">{value ? '✓' : ''}</div>
-  }
-
-  // ISO 日期字符串
+  if (typeof value === 'boolean') return <div className="px-3 py-2 text-[13px]">{value ? '✓' : ''}</div>
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
     return <div className="px-3 py-2 text-[12.5px]" style={{ color: 'var(--text)' }}>{value.slice(0, 10)}</div>
   }
-
-  // 数组兜底
-  if (Array.isArray(value)) {
-    return <div className="px-3 py-2 text-[12.5px]" style={{ color: 'var(--text)' }}>{value.join(' / ')}</div>
-  }
-
-  // 文本
-  const str = String(value)
-  return (
-    <div className={`px-3 py-2 text-[12.5px] ${numeric ? '' : 'break-words'}`}
-      style={{ color: 'var(--text)', lineHeight: 1.5 }}>
-      {str}
-    </div>
-  )
+  if (Array.isArray(value)) return <div className="px-3 py-2 text-[12.5px]" style={{ color: 'var(--text)' }}>{value.join(' / ')}</div>
+  return <div className={`px-3 py-2 text-[12.5px] ${numeric ? '' : 'break-words'}`} style={{ color: 'var(--text)', lineHeight: 1.5 }}>{String(value)}</div>
 }
 
 // ═══════════════════════════ Editors ═══════════════════════════
@@ -451,10 +588,7 @@ function NumberEditor({ value, onDone }) {
   useEffect(() => { ref.current?.focus(); ref.current?.select?.() }, [])
   return (
     <input ref={ref} type="number" value={v} onChange={e => setV(e.target.value)}
-      onBlur={() => {
-        if (v === '' || v === null) { onDone(null); return }
-        const n = Number(v); onDone(Number.isNaN(n) ? null : n)
-      }}
+      onBlur={() => { if (v === '' || v === null) { onDone(null); return } const n = Number(v); onDone(Number.isNaN(n) ? null : n) }}
       onKeyDown={e => {
         if (e.key === 'Escape') { e.preventDefault(); onDone(undefined) }
         if (e.key === 'Enter') { e.preventDefault(); e.target.blur() }
@@ -465,15 +599,12 @@ function NumberEditor({ value, onDone }) {
 }
 
 function SingleSelectEditor({ value, choices, onDone }) {
-  const [open, setOpen] = useState(true)
   const ref = useRef(null)
-
   useEffect(() => {
-    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) { setOpen(false); onDone(undefined) } }
+    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) onDone(undefined) }
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
   }, [onDone])
-
   return (
     <div ref={ref} className="relative">
       <div className="px-3 py-2 text-[12.5px] flex items-center justify-between"
@@ -483,24 +614,21 @@ function SingleSelectEditor({ value, choices, onDone }) {
           : <span style={{ color: 'var(--muted)' }}>请选择…</span>}
         <ChevronDown className="w-3.5 h-3.5" style={{ color: 'var(--muted)' }} />
       </div>
-      {open && (
-        <div className="absolute left-0 top-full mt-1 rounded-lg shadow-lg p-1 z-20 max-h-60 overflow-auto w-max min-w-full"
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-          <div onClick={() => onDone(null)}
-            className="px-3 py-1.5 rounded-md cursor-pointer text-[12px] hover:bg-black/5 dark:hover:bg-white/5"
-            style={{ color: 'var(--muted)' }}>清除</div>
-          {choices.map(c => {
-            const { bg, fg } = pillColors(c.color)
-            return (
-              <div key={c.id || c.name} onClick={() => onDone(c.name)}
-                className="px-2 py-1 rounded-md cursor-pointer hover:bg-black/5 dark:hover:bg-white/5">
-                <span className="inline-block px-2 py-0.5 rounded-md text-[12px] font-medium"
-                  style={{ background: bg, color: fg }}>{c.name}</span>
-              </div>
-            )
-          })}
-        </div>
-      )}
+      <div className="absolute left-0 top-full mt-1 rounded-lg shadow-lg p-1 z-20 max-h-60 overflow-auto w-max min-w-full"
+        style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div onClick={() => onDone(null)}
+          className="px-3 py-1.5 rounded-md cursor-pointer text-[12px] hover:bg-black/5 dark:hover:bg-white/5"
+          style={{ color: 'var(--muted)' }}>清除</div>
+        {choices.map(c => {
+          const { bg, fg } = pillColors(c.color)
+          return (
+            <div key={c.id || c.name} onClick={() => onDone(c.name)}
+              className="px-2 py-1 rounded-md cursor-pointer hover:bg-black/5 dark:hover:bg-white/5">
+              <span className="inline-block px-2 py-0.5 rounded-md text-[12px] font-medium" style={{ background: bg, color: fg }}>{c.name}</span>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -508,15 +636,12 @@ function SingleSelectEditor({ value, choices, onDone }) {
 function MultiSelectEditor({ value, choices, onDone }) {
   const [sel, setSel] = useState(value)
   const ref = useRef(null)
-
   useEffect(() => {
     function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) onDone(sel.length ? sel : null) }
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
   }, [sel, onDone])
-
   function toggle(name) { setSel(s => s.includes(name) ? s.filter(x => x !== name) : [...s, name]) }
-
   return (
     <div ref={ref} className="relative">
       <div className="px-2 py-1.5 flex flex-wrap gap-1 min-h-[36px] items-start"
@@ -535,8 +660,7 @@ function MultiSelectEditor({ value, choices, onDone }) {
             <div key={c.id || c.name} onClick={() => toggle(c.name)}
               className="flex items-center gap-2 px-2 py-1 rounded-md cursor-pointer hover:bg-black/5 dark:hover:bg-white/5">
               <input type="checkbox" checked={active} readOnly className="pointer-events-none" />
-              <span className="inline-block px-2 py-0.5 rounded-md text-[12px] font-medium"
-                style={{ background: bg, color: fg }}>{c.name}</span>
+              <span className="inline-block px-2 py-0.5 rounded-md text-[12px] font-medium" style={{ background: bg, color: fg }}>{c.name}</span>
             </div>
           )
         })}

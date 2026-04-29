@@ -54,6 +54,7 @@ export async function loadView(viewId) {
   ])
 
   const columnMeta = view.columnMeta ?? {}
+  const fieldById  = Object.fromEntries(fieldsRaw.map(f => [f.id, f]))
 
   const columns = fieldsRaw
     .map(f => ({ field: f, meta: columnMeta[f.id] ?? {} }))
@@ -69,6 +70,7 @@ export async function loadView(viewId) {
       description:  c.field.description ?? '',
       isComputed:   !!c.field.isComputed,
       isPrimary:    !!c.field.isPrimary,
+      statisticFunc: c.meta.statisticFunc ?? null,
     }))
 
   const records = (recordsResp.records ?? []).map(r => ({
@@ -77,7 +79,30 @@ export async function loadView(viewId) {
     fields: r.fields ?? {},
   }))
 
-  return { columns, records, view }
+  // 将视图的 filter/sort/group 从 fieldId 解析为 fieldName，供 UI 展示
+  const sorts = (view.sort?.sortObjs ?? []).map(s => ({
+    fieldId:   s.fieldId,
+    fieldName: fieldById[s.fieldId]?.name ?? s.fieldId,
+    order:     s.order,
+  }))
+  const groupField = view.group?.[0]
+  const group = groupField ? {
+    fieldId:   groupField.fieldId,
+    fieldName: fieldById[groupField.fieldId]?.name ?? groupField.fieldId,
+    order:     groupField.order,
+  } : null
+  const filterSet = view.filter?.filterSet ?? []
+  const filterConjunction = view.filter?.conjunction ?? 'and'
+  const filters = filterSet.map(f => ({
+    fieldId:   f.fieldId,
+    fieldName: fieldById[f.fieldId]?.name ?? f.fieldId,
+    operator:  f.operator,
+    value:     f.value,
+  }))
+
+  const headerLines = view.options?.fieldNameDisplayLines ?? 1
+
+  return { columns, records, view, sorts, group, filters, filterConjunction, headerLines }
 }
 
 function defaultWidth(field) {
@@ -148,4 +173,25 @@ export function formatNumber(value, options = {}) {
 /** 字段名是否表示金额（用于决定 ¥ 前缀） */
 export function looksLikeCurrency(name) {
   return /金额|CNY|元|费用|成本|价/i.test(name || '')
+}
+
+export const OPERATOR_LABELS = {
+  is: '=', isNot: '≠',
+  contains: '包含', doesNotContain: '不包含',
+  isEmpty: '为空', isNotEmpty: '非空',
+  isGreater: '>', isLess: '<',
+  isGreaterEqual: '≥', isLessEqual: '≤',
+  isOnOrAfter: '≥', isOnOrBefore: '≤',
+  isWithIn: '范围',
+  hasAnyOf: '含任一', hasAllOf: '全含', isAnyOf: '∈', isNoneOf: '∉',
+}
+
+export function formatFilterValue(value) {
+  if (value == null) return ''
+  if (Array.isArray(value)) return value.join(' / ')
+  if (typeof value === 'object') {
+    if (value.exactDate) return String(value.exactDate).slice(0, 10)
+    return JSON.stringify(value)
+  }
+  return String(value)
 }

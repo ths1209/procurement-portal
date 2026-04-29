@@ -90,12 +90,11 @@ export default function CostLedger() {
     return v
   }, [rows, keyword, role, cat, sort])
 
-  // 概览统计（精简版：只保留最有信号的三项）
+  // 概览统计（精简版：单据量 + 主导项目数）
   const stats = useMemo(() => {
     const total = rows.length
-    const totalSaving = rows.reduce((s, r) => s + num(r.fields[F.savingAdjusted]), 0)
     const leadCount   = rows.filter(r => r.fields[F.role] === '主导者').length
-    return { total, totalSaving, leadCount }
+    return { total, leadCount }
   }, [rows])
 
   if (error) {
@@ -177,12 +176,11 @@ function Header({ isAdmin, loading, onReload }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 function StatGrid({ s }) {
   const items = [
-    { label: '单据总数',    value: s.total,               color: '#6366F1' },
-    { label: '主导项目数',  value: s.leadCount,           color: '#DC2626' },
-    { label: '累计降本金额', value: fmtCNY(s.totalSaving), color: '#10B981' },
+    { label: '单据总数',   value: s.total,     color: '#6366F1' },
+    { label: '主导项目数', value: s.leadCount, color: '#DC2626' },
   ]
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <div className="grid grid-cols-2 gap-3">
       {items.map(it => (
         <div key={it.label} className="card p-4">
           <div className="text-xs font-medium mb-2" style={{ color: 'var(--muted)' }}>{it.label}</div>

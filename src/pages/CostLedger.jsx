@@ -1,16 +1,15 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   Wallet, Search, Loader2, AlertCircle, ExternalLink, X,
-  Crown, User, Sparkles, FileText, TrendingDown, Package,
-  Calendar, Building2, Paperclip, Save, Edit3, SlidersHorizontal,
-  ArrowDownAZ, ArrowUpAZ, TrendingUp,
+  Crown, User, Sparkles, FileText, TrendingDown,
+  Calendar, Paperclip, Save, Edit3, SlidersHorizontal,
+  Check, ChevronDown, Star, RefreshCw,
 } from 'lucide-react'
 import { createPortal } from 'react-dom'
-import { useTheme } from '../contexts/ThemeContext'
 import { useAuth } from '../contexts/AuthContext'
 import {
-  listCostLedger, updateCostLedger, getAttachments,
-  fmtCNY, fmtPct, isCostLedgerConfigured, F, EDITABLE,
+  listCostLedger, updateCostLedger, getAttachments, loadFieldChoices,
+  fmtCNY, fmtPct, isCostLedgerConfigured, F, EDITABLE, EDITABLE_GROUPS,
 } from '../lib/teableCostLedger'
 
 // 角色 → 颜色（柔和色块，非渐变）
@@ -31,11 +30,11 @@ const ROLE_GRADIENT = {
 const TEABLE_SHARE = 'https://yach-teable.zhiyinlou.com/share/shrlzdx0BtJxMDu0294/view'
 
 export default function CostLedger() {
-  const { dark } = useTheme()
   const { profile } = useAuth()
   const isAdmin = profile?.role === 'admin'
 
   const [rows,    setRows]    = useState([])
+  const [choices, setChoices] = useState({})
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState('')
   const [picked,  setPicked]  = useState(null)
@@ -53,8 +52,9 @@ export default function CostLedger() {
     }
     setLoading(true); setError('')
     try {
-      const data = await listCostLedger(profile)
+      const [data, ch] = await Promise.all([listCostLedger(profile), loadFieldChoices()])
       setRows(data)
+      setChoices(ch)
     } catch (e) {
       setError(e.message || '加载失败')
     } finally {
@@ -90,14 +90,12 @@ export default function CostLedger() {
     return v
   }, [rows, keyword, role, cat, sort])
 
-  // 概览统计
+  // 概览统计（精简版：只保留最有信号的三项）
   const stats = useMemo(() => {
     const total = rows.length
     const totalSaving = rows.reduce((s, r) => s + num(r.fields[F.savingAdjusted]), 0)
-    const totalWin    = rows.reduce((s, r) => s + num(r.fields[F.winAmount]), 0)
-    const avgRate     = totalWin > 0 ? totalSaving / totalWin : 0
     const leadCount   = rows.filter(r => r.fields[F.role] === '主导者').length
-    return { total, totalSaving, avgRate, leadCount }
+    return { total, totalSaving, leadCount }
   }, [rows])
 
   if (error) {
@@ -107,13 +105,11 @@ export default function CostLedger() {
   }
 
   return (
-    <div className="space-y-5 pb-6">
-      {/* 标题 + 概览 */}
-      <Header isAdmin={isAdmin} />
+    <div className="flex flex-col gap-4 animate-page-in">
+      <Header isAdmin={isAdmin} loading={loading} onReload={load} />
 
-      <StatGrid s={stats} dark={dark} />
+      <StatGrid s={stats} />
 
-      {/* 过滤工具栏 */}
       <Toolbar
         keyword={keyword} setKeyword={setKeyword}
         role={role}       setRole={setRole}       roleOpts={roleOpts}
@@ -122,7 +118,6 @@ export default function CostLedger() {
         count={view.length}
       />
 
-      {/* 列表区 */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--muted)' }} />
@@ -137,10 +132,10 @@ export default function CostLedger() {
         </div>
       )}
 
-      {/* 详情抽屉 */}
       {picked && (
         <DetailDrawer
           record={picked}
+          choices={choices}
           onClose={() => setPicked(null)}
           onSaved={upd => { setRows(rs => rs.map(r => r._id === upd._id ? upd : r)); setPicked(upd) }}
           isAdmin={isAdmin}
@@ -151,52 +146,47 @@ export default function CostLedger() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-function Header({ isAdmin }) {
+function Header({ isAdmin, loading, onReload }) {
   return (
-    <div className="flex items-start justify-between gap-4 flex-wrap">
-      <div className="flex items-center gap-3">
-        <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-lg"
-          style={{ background: 'linear-gradient(135deg,#6366F1,#8B5CF6)', boxShadow: '0 8px 20px -8px rgba(99,102,241,0.5)' }}>
-          <Wallet className="w-5 h-5 text-white" />
-        </div>
+    <div className="flex items-center justify-between gap-4 flex-wrap">
+      <div className="flex items-center gap-2">
+        <Wallet className="w-5 h-5 shrink-0" style={{ color: '#6366F1' }} strokeWidth={1.75} />
         <div>
-          <h1 className="text-[20px] font-bold tracking-tight" style={{ color: 'var(--text)' }}>成本台账</h1>
-          <p className="text-[12px] mt-0.5" style={{ color: 'var(--muted)' }}>
+          <h1 className="font-semibold text-base leading-tight" style={{ color: 'var(--text)' }}>成本台账</h1>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
             {isAdmin ? '管理员视图 · 全部数据' : '仅显示您作为采购员参与的单据'}
           </p>
         </div>
       </div>
-      <a href={TEABLE_SHARE} target="_blank" rel="noopener noreferrer"
-        className="press flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-medium transition-colors"
-        style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)' }}>
-        <ExternalLink className="w-3.5 h-3.5" />原表
-      </a>
+      <div className="flex gap-2">
+        <button onClick={onReload} disabled={loading} className="press p-1.5 rounded-lg"
+          style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+          <RefreshCw className="w-4 h-4"
+            style={{ color: 'var(--muted)', animation: loading ? 'spin 1s linear infinite' : '' }} strokeWidth={1.75} />
+        </button>
+        <a href={TEABLE_SHARE} target="_blank" rel="noopener noreferrer"
+          className="press flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium"
+          style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)' }}>
+          <ExternalLink className="w-4 h-4" strokeWidth={1.75} />原表
+        </a>
+      </div>
     </div>
   )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-function StatGrid({ s, dark }) {
+function StatGrid({ s }) {
   const items = [
-    { label: '单据总数',    value: s.total,                     unit: '笔',  color: '#6366F1', icon: FileText },
-    { label: '累计降本金额', value: fmtCNY(s.totalSaving),       unit: '元',  color: '#10B981', icon: TrendingDown },
-    { label: '平均降本率',   value: fmtPct(s.avgRate).replace('%',''), unit: '%', color: '#F59E0B', icon: TrendingUp },
-    { label: '主导项目数',   value: s.leadCount,                 unit: '笔',  color: '#EF4444', icon: Crown },
+    { label: '单据总数',    value: s.total,               color: '#6366F1' },
+    { label: '主导项目数',  value: s.leadCount,           color: '#DC2626' },
+    { label: '累计降本金额', value: fmtCNY(s.totalSaving), color: '#10B981' },
   ]
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <div className="grid grid-cols-3 gap-3">
       {items.map(it => (
-        <div key={it.label} className="rounded-2xl p-4 relative overflow-hidden"
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-          <div className="absolute -right-6 -top-6 w-20 h-20 rounded-full opacity-[0.08]"
-            style={{ background: it.color }} />
-          <div className="flex items-center gap-2 text-[11px] font-medium mb-2" style={{ color: 'var(--muted)' }}>
-            <it.icon className="w-3.5 h-3.5" style={{ color: it.color }} />{it.label}
-          </div>
-          <div className="flex items-baseline gap-1">
-            <span className="text-[22px] font-bold tracking-tight leading-none" style={{ color: 'var(--text)' }}>{it.value}</span>
-            <span className="text-[11px]" style={{ color: 'var(--muted)' }}>{it.unit}</span>
-          </div>
+        <div key={it.label} className="card p-4">
+          <div className="text-xs font-medium mb-2" style={{ color: 'var(--muted)' }}>{it.label}</div>
+          <p className="text-2xl font-bold tabular-nums" style={{ color: it.color }}>{it.value}</p>
         </div>
       ))}
     </div>
@@ -315,10 +305,10 @@ function RecordCard({ record, onOpen }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-function DetailDrawer({ record, onClose, onSaved, isAdmin }) {
+function DetailDrawer({ record, choices, onClose, onSaved, isAdmin }) {
   const f = record.fields
   const [edit, setEdit] = useState(false)
-  const [draft, setDraft] = useState(() => pick(f, EDITABLE))
+  const [draft, setDraft] = useState(() => pickEditable(f))
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
@@ -342,7 +332,7 @@ function DetailDrawer({ record, onClose, onSaved, isAdmin }) {
   }
 
   function cancel() {
-    setDraft(pick(f, EDITABLE))
+    setDraft(pickEditable(f))
     setEdit(false); setErr('')
   }
 
@@ -417,68 +407,40 @@ function DetailDrawer({ record, onClose, onSaved, isAdmin }) {
             </div>
           </div>
 
-          {/* 基本信息 */}
+          {/* 项目只读信息 */}
           <Section title="项目信息" icon={FileText}>
-            <KV label="需求部门"       value={f[F.requestDept]} />
-            <KV label="立项单号"       value={f[F.projectNo]} />
-            <KV label="合同号"         value={f[F.contractNo]} />
-            <KV label="中标供应商"     value={f[F.supplier]} />
-            <KV label="一级品类"       value={f[F.category1]} />
-            <KV label="采购品类(大类)" value={toArr(f[F.categoryBig]).join(' / ')} />
-            <KV label="采购组织"       value={f[F.buyerOrg]} />
+            <KV label="需求部门"   value={f[F.requestDept]} />
+            <KV label="立项单号"   value={f[F.projectNo]} />
+            <KV label="合同号"     value={f[F.contractNo]} />
+            <KV label="中标供应商" value={f[F.supplier]} />
+            <KV label="一级品类"   value={f[F.category1]} />
+            <KV label="采购组织"   value={f[F.buyerOrg]} />
+            <KV label="立项时间"   value={fmtDate(f[F.projectDate])} />
+            <KV label="授标时间"   value={fmtDate(f[F.grantTime])} />
+            <KV label="合同结束"   value={fmtDate(f[F.contractEndMax]) || f[F.contractEnd]} />
             {isAdmin && <KV label="采购员" value={`${f[F.buyerName] || ''} ${f[F.buyerJobId] ? '('+f[F.buyerJobId]+')' : ''}`.trim()} />}
           </Section>
 
-          {/* 时间信息 */}
-          <Section title="时间节点" icon={Calendar}>
-            <KV label="立项时间"       value={fmtDate(f[F.projectDate])} />
-            <KV label="授标时间"       value={fmtDate(f[F.grantTime])} />
-            <KV label="结项审批通过"   value={f[F.approveTime]} />
-            <KV label="合同开始"       value={f[F.contractStart]} />
-            <KV label="合同结束"       value={fmtDate(f[F.contractEndMax]) || f[F.contractEnd]} />
-          </Section>
-
-          {/* 降本明细 */}
-          <Section title="降本明细" icon={TrendingDown}>
+          {/* 系统计算值（只读） */}
+          <Section title="系统计算" icon={TrendingDown}>
             <KV label="核算后降本金额" value={fmtCNY(f[F.savingAfter])} />
             <KV label="系统降本金额"   value={fmtCNY(f[F.systemSaving])} />
-            <KV label="FY27 核对"     value={fmtCNY(f[F.fy27Correct])} />
-            <KV label="FY28 预估"     value={fmtCNY(f[F.fy28Est])} />
-            <KV label="FY28 加权"     value={fmtCNY(f[F.fy28Correct])} />
-            <KV label="FY29 预估"     value={fmtCNY(f[F.fy29Est])} />
-            <KV label="FY29 加权"     value={fmtCNY(f[F.fy29Correct])} />
-            <KV label="核心降本方式"   value={toArr(f[F.saveMethods]).map(m => (
-              <span key={m} className="inline-block mr-1 mb-1 px-2 py-0.5 rounded-md text-[10.5px]"
-                style={{ background: 'rgba(99,102,241,0.1)', color: '#6366F1' }}>{m}</span>
-            ))} />
-            <KV label="成本核算节约方式" value={f[F.saveMethod]} />
           </Section>
 
-          {/* 可编辑区 */}
-          <Section title="角色说明与降本举措" icon={Sparkles} hint="以下字段可编辑">
-            <EditableField label="主导角色原因说明" name={F.roleReason}
-              value={edit ? draft[F.roleReason] : f[F.roleReason]}
-              onChange={v => setDraft(d => ({ ...d, [F.roleReason]: v }))}
-              edit={edit} multiline />
-            <EditableField label="在项目中的降本贡献度" name={F.saveContribution}
-              value={edit ? draft[F.saveContribution] : f[F.saveContribution]}
-              onChange={v => setDraft(d => ({ ...d, [F.saveContribution]: v }))}
-              edit={edit} />
-            <EditableField label="具体降本举措" name={F.saveMeasures}
-              value={edit ? draft[F.saveMeasures] : f[F.saveMeasures]}
-              onChange={v => setDraft(d => ({ ...d, [F.saveMeasures]: v }))}
-              edit={edit} multiline />
-            <EditableField label="历史采购价 / 市场平均价描述" name={F.priceDesc}
-              value={edit ? draft[F.priceDesc] : f[F.priceDesc]}
-              onChange={v => setDraft(d => ({ ...d, [F.priceDesc]: v }))}
-              edit={edit} multiline />
-            <EditableField label="其他备注" name={F.remark}
-              value={edit ? draft[F.remark] : f[F.remark]}
-              onChange={v => setDraft(d => ({ ...d, [F.remark]: v }))}
-              edit={edit} multiline />
-          </Section>
+          {/* 可编辑：按 ⭐ 分组 */}
+          {EDITABLE_GROUPS.map(g => (
+            <Section key={g.title} title={g.title} icon={g.stars >= 3 ? Star : (g.stars >= 1 ? Sparkles : Edit3)} stars={g.stars} hint={edit ? '编辑中' : '点击右上角「编辑」修改'}>
+              {g.fields.map(meta => (
+                <EditableRow key={meta.name} meta={meta}
+                  value={edit ? draft[meta.name] : f[meta.name]}
+                  onChange={v => setDraft(d => ({ ...d, [meta.name]: v }))}
+                  choices={choices[meta.name] || []}
+                  edit={edit} />
+              ))}
+            </Section>
+          ))}
 
-          {/* 附件 */}
+          {/* 附件（只读） */}
           <Section title="附件资料" icon={Paperclip}>
             <AttachBlock label="历史采购价 / 市场平均价" list={getAttachments(record, F.priceAttach)} />
             <AttachBlock label="业务认可的角色截图"       list={getAttachments(record, F.roleAttach)} />
@@ -504,11 +466,17 @@ function BigMetric({ label, value, unit, color }) {
   )
 }
 
-function Section({ title, icon: Icon, hint, children }) {
+function Section({ title, icon: Icon, hint, stars = 0, children }) {
+  const starColor = stars >= 3 ? '#F59E0B' : (stars >= 1 ? '#6366F1' : null)
   return (
     <section className="rounded-2xl overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
       <div className="px-5 py-3 flex items-center gap-2" style={{ borderBottom: '1px solid var(--border)' }}>
-        <Icon className="w-3.5 h-3.5" style={{ color: '#6366F1' }} />
+        <Icon className="w-3.5 h-3.5" style={{ color: starColor || '#6366F1' }} />
+        {stars > 0 && (
+          <span className="text-[11px] tracking-tighter" style={{ color: starColor }}>
+            {'★'.repeat(stars)}
+          </span>
+        )}
         <h4 className="text-[12.5px] font-bold" style={{ color: 'var(--text)' }}>{title}</h4>
         {hint && <span className="text-[10.5px] ml-auto" style={{ color: 'var(--muted)' }}>{hint}</span>}
       </div>
@@ -519,36 +487,126 @@ function Section({ title, icon: Icon, hint, children }) {
   )
 }
 
+// 可编辑行：按字段类型分发（text / longText / number / singleSelect / multipleSelect）
+function EditableRow({ meta, value, onChange, choices, edit }) {
+  const { label, type, stars, unit } = meta
+
+  const labelBlock = (
+    <div className="flex items-center gap-1.5 mb-1.5">
+      {stars > 0 && (
+        <span className="text-[10.5px] tracking-tighter" style={{ color: stars >= 3 ? '#F59E0B' : '#6366F1' }}>
+          {'★'.repeat(stars)}
+        </span>
+      )}
+      <span className="text-[11.5px] font-medium" style={{ color: 'var(--muted)' }}>{label}</span>
+      {unit && <span className="text-[10.5px]" style={{ color: 'var(--muted)', opacity: 0.7 }}>（{unit}）</span>}
+    </div>
+  )
+
+  // 只读展示
+  if (!edit) {
+    const display = (() => {
+      if (value === null || value === undefined || value === '') return '—'
+      if (Array.isArray(value)) return value.length ? value.join(' · ') : '—'
+      if (type === 'number') return fmtCNY(value)
+      return String(value)
+    })()
+    const isEmpty = display === '—'
+    return (
+      <div>
+        {labelBlock}
+        <div className="text-[12.5px] leading-relaxed whitespace-pre-wrap rounded-xl px-3 py-2"
+          style={{ background: 'var(--surface2)', color: isEmpty ? 'var(--muted)' : 'var(--text)', minHeight: 38 }}>
+          {display}
+        </div>
+      </div>
+    )
+  }
+
+  // 编辑态：按类型渲染
+  return (
+    <div>
+      {labelBlock}
+      {type === 'longText' ? (
+        <textarea value={value || ''} onChange={e => onChange(e.target.value)} rows={3}
+          className="w-full px-3 py-2 rounded-xl text-[12.5px] outline-none resize-y"
+          style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }} />
+      ) : type === 'number' ? (
+        <input type="number" step="any" value={value ?? ''} onChange={e => onChange(e.target.value)}
+          className="w-full px-3 py-2 rounded-xl text-[12.5px] outline-none tabular-nums"
+          style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }} />
+      ) : type === 'singleSelect' ? (
+        <SingleSelectEditor value={value || ''} onChange={onChange} choices={choices} />
+      ) : type === 'multipleSelect' ? (
+        <MultiSelectEditor value={Array.isArray(value) ? value : (value ? [value] : [])} onChange={onChange} choices={choices} />
+      ) : (
+        <input value={value ?? ''} onChange={e => onChange(e.target.value)}
+          className="w-full px-3 py-2 rounded-xl text-[12.5px] outline-none"
+          style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }} />
+      )}
+    </div>
+  )
+}
+
+function SingleSelectEditor({ value, onChange, choices }) {
+  return (
+    <div className="relative">
+      <select value={value} onChange={e => onChange(e.target.value)}
+        className="w-full appearance-none px-3 pr-8 py-2 rounded-xl text-[12.5px] outline-none cursor-pointer"
+        style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }}>
+        <option value="">— 请选择 —</option>
+        {choices.map(c => (
+          <option key={c.name} value={c.name}>{c.name}</option>
+        ))}
+      </select>
+      <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: 'var(--muted)' }} />
+    </div>
+  )
+}
+
+function MultiSelectEditor({ value, onChange, choices }) {
+  const set = new Set(value)
+  function toggle(name) {
+    const next = new Set(set)
+    if (next.has(name)) next.delete(name); else next.add(name)
+    onChange([...next])
+  }
+  if (!choices.length) {
+    return (
+      <div className="text-[11.5px] rounded-xl px-3 py-2"
+        style={{ background: 'var(--surface2)', color: 'var(--muted)' }}>
+        （未加载到选项）
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-wrap gap-1.5 rounded-xl p-2"
+      style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+      {choices.map(c => {
+        const active = set.has(c.name)
+        return (
+          <button key={c.name} type="button" onClick={() => toggle(c.name)}
+            className="press inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11.5px] font-medium transition-colors"
+            style={{
+              background: active ? 'rgba(99,102,241,0.12)' : 'var(--surface)',
+              color: active ? '#4F46E5' : 'var(--muted)',
+              border: `1px solid ${active ? 'rgba(99,102,241,0.3)' : 'var(--border)'}`,
+            }}>
+            {active && <Check className="w-3 h-3" />}
+            {c.name}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function KV({ label, value }) {
   if (value === null || value === undefined || value === '') return null
   return (
     <div className="flex gap-4 text-[12.5px] leading-relaxed">
       <span className="shrink-0 w-[110px]" style={{ color: 'var(--muted)' }}>{label}</span>
       <span className="flex-1 break-all" style={{ color: 'var(--text)' }}>{value}</span>
-    </div>
-  )
-}
-
-function EditableField({ label, value, onChange, edit, multiline }) {
-  return (
-    <div>
-      <div className="text-[11.5px] font-medium mb-1.5" style={{ color: 'var(--muted)' }}>{label}</div>
-      {edit ? (
-        multiline ? (
-          <textarea value={value || ''} onChange={e => onChange(e.target.value)} rows={3}
-            className="w-full px-3 py-2 rounded-xl text-[12.5px] outline-none resize-y"
-            style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }} />
-        ) : (
-          <input value={value || ''} onChange={e => onChange(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl text-[12.5px] outline-none"
-            style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }} />
-        )
-      ) : (
-        <div className="text-[12.5px] leading-relaxed whitespace-pre-wrap rounded-xl px-3 py-2"
-          style={{ background: 'var(--surface2)', color: value ? 'var(--text)' : 'var(--muted)', minHeight: 38 }}>
-          {value || '—'}
-        </div>
-      )}
     </div>
   )
 }
@@ -620,8 +678,12 @@ function toArr(v) {
   return [v]
 }
 function uniq(arr) { return [...new Set(arr.filter(Boolean))] }
-function pick(obj, keys) {
-  const out = {}; for (const k of keys) out[k] = obj[k] ?? ''
+function pickEditable(fields) {
+  const out = {}
+  for (const k of EDITABLE) {
+    const v = fields[k]
+    out[k] = Array.isArray(v) ? [...v] : (v ?? '')
+  }
   return out
 }
 function fmtDate(v) {

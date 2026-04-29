@@ -71,14 +71,47 @@ export const F = {
   quoteAttach:    '报价附件',
 }
 
-// 可编辑字段白名单 ── 只让用户改描述性 / 备注类
-export const EDITABLE = [
-  F.roleReason,
-  F.saveContribution,
-  F.saveMeasures,
-  F.priceDesc,
-  F.remark,
+// 可编辑字段配置：按星级重要性分组，包含类型 / 是否数字 / 多行
+// 带 ⭐ 的字段是用户必须填的关键字段
+export const EDITABLE_GROUPS = [
+  {
+    title: '核心降本信息',
+    stars: 3,
+    fields: [
+      { name: F.categoryBig,    type: 'singleSelect',   stars: 3, label: '采购品类（大类）' },
+      { name: F.saveMethods,    type: 'multipleSelect', stars: 3, label: '核心降本方式' },
+      { name: F.savingAdjusted, type: 'number',         stars: 3, label: 'FY27 调整后准确降本金额', unit: '元' },
+      { name: F.saveMeasures,   type: 'longText',       stars: 3, label: '具体降本举措' },
+      { name: F.fy28Est,        type: 'text',           stars: 3, label: 'FY28 预估降本金额', unit: '元' },
+      { name: F.fy29Est,        type: 'text',           stars: 3, label: 'FY29 预估降本金额', unit: '元' },
+    ],
+  },
+  {
+    title: '角色与加权核对',
+    stars: 1,
+    fields: [
+      { name: F.role,            type: 'singleSelect', stars: 1, label: '在项目中的角色' },
+      { name: F.fy27Correct,     type: 'text',         stars: 1, label: 'FY27 核对后降本金额（2.28 口径）', unit: '元' },
+      { name: F.fy28Correct,     type: 'text',         stars: 1, label: 'FY28 加权降本金额（2.28 口径）', unit: '元' },
+      { name: F.fy29Correct,     type: 'text',         stars: 1, label: 'FY29 加权降本金额（2.28 口径）', unit: '元' },
+      { name: F.roleReason,      type: 'longText',     stars: 0, label: '主导角色原因说明' },
+      { name: F.saveContribution,type: 'text',         stars: 0, label: '在项目中的降本贡献度' },
+    ],
+  },
+  {
+    title: '补充说明',
+    stars: 0,
+    fields: [
+      { name: F.priceDesc, type: 'longText', stars: 0, label: '历史采购价 / 市场平均价描述' },
+      { name: F.remark,    type: 'longText', stars: 0, label: '其他备注' },
+    ],
+  },
 ]
+
+export const EDITABLE = EDITABLE_GROUPS.flatMap(g => g.fields.map(f => f.name))
+export const FIELD_META = Object.fromEntries(
+  EDITABLE_GROUPS.flatMap(g => g.fields).map(f => [f.name, f])
+)
 
 async function req(path, init = {}) {
   const res = await fetch(`${API}/api${path}`, {
@@ -128,17 +161,41 @@ function normalize(r) {
   return { _id: r.id, fields: r.fields ?? {} }
 }
 
-// ── 更新单字段（只允许白名单内字段） ─────────────────────────────────────────
-export async function updateCostLedgerField(recordId, fieldName, value) {
-  if (!TID) throw new Error('未配置成本台账表')
-  if (!EDITABLE.includes(fieldName)) throw new Error(`字段「${fieldName}」不允许修改`)
-  await req(`/table/${TID}/record/${recordId}`, {
-    method: 'PATCH',
-    body: JSON.stringify({
-      fieldKeyType: 'name',
-      record: { fields: { [fieldName]: value ?? '' } },
-    }),
-  })
+// ── 读取字段选项（single/multiSelect 专用） ──────────────────────────────────
+let _fieldChoicesCache = null
+export async function loadFieldChoices() {
+  if (_fieldChoicesCache) return _fieldChoicesCache
+  if (!TID) return {}
+  const list = await req(`/table/${TID}/field`)
+  const map = {}
+  for (const f of list ?? []) {
+    if (f.type === 'singleSelect' || f.type === 'multipleSelect') {
+      map[f.name] = (f.options?.choices ?? []).map(c => ({
+        name: c.name,
+        color: c.color,
+      }))
+    }
+  }
+  _fieldChoicesCache = map
+  return map
+}
+
+// ── 按字段类型规范化待写入值 ─────────────────────────────────────────────────
+function castByType(name, v) {
+  const meta = FIELD_META[name]
+  if (!meta) return v ?? ''
+  if (meta.type === 'number') {
+    if (v === '' || v === null || v === undefined) return null
+    const n = Number(v)
+    return Number.isFinite(n) ? n : null
+  }
+  if (meta.type === 'multipleSelect') {
+    if (Array.isArray(v)) return v.filter(Boolean)
+    if (v === '' || v === null || v === undefined) return []
+    return [v]
+  }
+  // text / longText / singleSelect
+  return v ?? ''
 }
 
 // ── 批量更新（保存整份草稿） ────────────────────────────────────────────────
@@ -146,12 +203,12 @@ export async function updateCostLedger(recordId, patch) {
   if (!TID) throw new Error('未配置成本台账表')
   const fields = {}
   for (const [k, v] of Object.entries(patch)) {
-    if (EDITABLE.includes(k)) fields[k] = v ?? ''
+    if (EDITABLE.includes(k)) fields[k] = castByType(k, v)
   }
   if (!Object.keys(fields).length) return
   await req(`/table/${TID}/record/${recordId}`, {
     method: 'PATCH',
-    body: JSON.stringify({ fieldKeyType: 'name', record: { fields } }),
+    body: JSON.stringify({ fieldKeyType: 'name', typecast: true, record: { fields } }),
   })
 }
 

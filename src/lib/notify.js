@@ -30,7 +30,7 @@ export async function sendNotify(jobId, content) {
       method: 'POST',
       mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ jobId, title: '采购运营门户通知', content }),
+      body: JSON.stringify({ jobId, title: '采购工作门户通知', content }),
     })
     console.log(`[数环通] 请求已发送 → 工号:${jobId}`)
     return { ok: true, msg: `已发送至工号 ${jobId}` }

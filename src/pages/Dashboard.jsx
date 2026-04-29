@@ -115,7 +115,7 @@ export default function Dashboard() {
           <div>
             <p className="text-xs mb-1.5" style={{ color:'rgba(255,255,255,0.35)' }}>{date}</p>
             <h2 className="text-[22px] font-bold text-white">你好，{profile?.displayName || '同学'} 👋</h2>
-            <p className="text-sm mt-1" style={{ color:'rgba(255,255,255,0.35)' }}>采购运营组工作门户 · 所有工具一站直达</p>
+            <p className="text-sm mt-1" style={{ color:'rgba(255,255,255,0.35)' }}>采购工作门户 · 所有工具一站直达</p>
           </div>
           <div className="flex gap-3">
             {[

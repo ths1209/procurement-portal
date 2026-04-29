@@ -97,7 +97,7 @@ async function sendNotify(jobId, content) {
     return
   }
   try {
-    const body = JSON.stringify({ jobId, title: '采购运营门户通知', content })
+    const body = JSON.stringify({ jobId, title: '采购工作门户通知', content })
     const res = await httpReq(NOTIFY_URL, {
       method: 'POST',
       headers: {},

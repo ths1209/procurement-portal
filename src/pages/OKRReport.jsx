@@ -1702,7 +1702,7 @@ function OKRUrgeModal({ period, people, onClose }) {
     for (const p of targets) {
       if (!p.jobId) { failed.push({ ...p, reason: '未配置工号' }); continue }
       try {
-        const content = `您好，${period.label} OKR 进度报告（${p.group}）尚未提交，请尽快登录采购运营门户完成填写。`
+        const content = `您好，${period.label} OKR 进度报告（${p.group}）尚未提交，请尽快登录采购工作门户完成填写。`
         await sendNotify(p.jobId, content)
         sent.push(p)
       } catch (e) {

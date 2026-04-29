@@ -3,7 +3,7 @@ import talLogo from '../assets/tal-logo.png'
 import { trackVisit } from '../lib/teableAnalytics'
 import { createPortal } from 'react-dom'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { LayoutDashboard, ClipboardList, Medal, BookOpen, Users, LogOut, Menu, X, Sun, Moon, KeyRound, Sparkles, TrendingUp } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, Medal, BookOpen, Users, LogOut, Menu, X, Sun, Moon, KeyRound, Sparkles, TrendingUp, Wallet } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 
@@ -13,6 +13,7 @@ const NAV = [
   { to: '/okr-report', label: 'OKR 进度',    icon: TrendingUp, okrOnly: true },
   { to: '/projects',   label: '项目进度',    icon: ClipboardList, hideGroupPurchase: true },
   { to: '/reviews',    label: '百万项目评审', icon: Medal           },
+  { to: '/cost-ledger',label: '成本台账',    icon: Wallet          },
   { to: '/consulting', label: '咨询赋能台账', icon: BookOpen, opsOnly: true },
   { to: '/admin',      label: '用户管理',    icon: Users, admin: true },
 ]
@@ -162,7 +163,7 @@ export default function Layout({ children }) {
           <button onClick={() => setOpen(true)} className="press p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 text-[var(--text)] transition-colors">
             <Menu className="w-5 h-5" />
           </button>
-          <span className="text-sm font-bold" style={{ color: 'var(--text)' }}>采购运营组工作门户</span>
+          <span className="text-sm font-bold" style={{ color: 'var(--text)' }}>采购工作门户</span>
           <button onClick={toggle} className="press p-2 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors" style={{ color: 'var(--muted)' }}>
             {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>

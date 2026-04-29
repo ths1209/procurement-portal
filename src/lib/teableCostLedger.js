@@ -6,8 +6,8 @@
 const API   = (import.meta.env.VITE_TEABLE_API_BASE ?? '').replace(/\/$/, '')
 const TOKEN = import.meta.env.VITE_TEABLE_TOKEN
 const TID   = import.meta.env.VITE_TEABLE_COST_LEDGER_TABLE_ID
-// 分享视图 viewId：使用该视图的 filter / sort / group（FY27 增量降本 · 202 条）
-const VID   = 'viw4NKBSKkxIo1kOrlK'
+// 分享视图 viewId：降本金额（公式列）非空 + 采购品类大类可为空（空时在前端显示"未确认"）
+const VID   = 'viwJcCBJmpfLU7DclM0'
 
 export const isCostLedgerConfigured = () => !!(TID && TOKEN)
 

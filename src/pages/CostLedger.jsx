@@ -42,6 +42,8 @@ export default function CostLedger() {
   const [keyword, setKeyword] = useState('')
   const [role,    setRole]    = useState('')
   const [cat,     setCat]     = useState('')
+  const [buyer,   setBuyer]   = useState('')
+  const [org,     setOrg]     = useState('')
   const [sort,    setSort]    = useState('saving-desc')
 
   useEffect(() => { load() }, [profile?.jobId, profile?.role])
@@ -63,8 +65,14 @@ export default function CostLedger() {
   }
 
   // 筛选 / 排序
-  const roleOpts = useMemo(() => uniq(rows.map(r => r.fields[F.role])), [rows])
-  const catOpts  = useMemo(() => uniq(rows.flatMap(r => toArr(r.fields[F.categoryBig]))), [rows])
+  const roleOpts  = useMemo(() => uniq(rows.map(r => r.fields[F.role])), [rows])
+  const catOpts   = useMemo(() => {
+    const list = uniq(rows.flatMap(r => toArr(r.fields[F.categoryBig])))
+    const hasEmpty = rows.some(r => toArr(r.fields[F.categoryBig]).length === 0)
+    return hasEmpty ? ['未确认', ...list] : list
+  }, [rows])
+  const buyerOpts = useMemo(() => uniq(rows.map(r => r.fields[F.buyerName])), [rows])
+  const orgOpts   = useMemo(() => uniq(rows.map(r => r.fields[F.buyerOrg])), [rows])
 
   const view = useMemo(() => {
     let v = rows.slice()
@@ -72,12 +80,17 @@ export default function CostLedger() {
     if (kw) {
       v = v.filter(r => {
         const f = r.fields
-        return [f[F.projectName], f[F.supplier], f[F.contractNo], f[F.requestDept]]
+        return [f[F.projectName], f[F.supplier], f[F.contractNo], f[F.requestDept], f[F.buyerName]]
           .some(x => String(x || '').toLowerCase().includes(kw))
       })
     }
-    if (role) v = v.filter(r => r.fields[F.role] === role)
-    if (cat)  v = v.filter(r => toArr(r.fields[F.categoryBig]).includes(cat))
+    if (role)  v = v.filter(r => r.fields[F.role] === role)
+    if (cat)   v = v.filter(r => {
+      const cats = toArr(r.fields[F.categoryBig])
+      return cat === '未确认' ? cats.length === 0 : cats.includes(cat)
+    })
+    if (buyer) v = v.filter(r => r.fields[F.buyerName] === buyer)
+    if (org)   v = v.filter(r => r.fields[F.buyerOrg] === org)
     const k = sort
     v.sort((a, b) => {
       const fa = a.fields, fb = b.fields
@@ -88,13 +101,16 @@ export default function CostLedger() {
       return 0
     })
     return v
-  }, [rows, keyword, role, cat, sort])
+  }, [rows, keyword, role, cat, buyer, org, sort])
 
-  // 概览统计（精简版：单据量 + 主导项目数）
+  // 概览统计：按三个角色分别计数
   const stats = useMemo(() => {
-    const total = rows.length
-    const leadCount   = rows.filter(r => r.fields[F.role] === '主导者').length
-    return { total, leadCount }
+    const byRole = { '主导者': 0, '参与者': 0, '支持者': 0 }
+    for (const r of rows) {
+      const k = r.fields[F.role]
+      if (byRole[k] !== undefined) byRole[k] += 1
+    }
+    return byRole
   }, [rows])
 
   if (error) {
@@ -107,14 +123,17 @@ export default function CostLedger() {
     <div className="flex flex-col gap-4 animate-page-in">
       <Header isAdmin={isAdmin} loading={loading} onReload={load} />
 
-      <StatGrid s={stats} />
+      <StatGrid s={stats} activeRole={role} onRoleClick={setRole} />
 
       <Toolbar
         keyword={keyword} setKeyword={setKeyword}
         role={role}       setRole={setRole}       roleOpts={roleOpts}
         cat={cat}         setCat={setCat}         catOpts={catOpts}
+        buyer={buyer}     setBuyer={setBuyer}     buyerOpts={buyerOpts}
+        org={org}         setOrg={setOrg}         orgOpts={orgOpts}
         sort={sort}       setSort={setSort}
         count={view.length}
+        isAdmin={isAdmin}
       />
 
       {loading ? (
@@ -124,7 +143,7 @@ export default function CostLedger() {
       ) : view.length === 0 ? (
         <Empty hasData={rows.length > 0} />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4 stagger">
           {view.map(r => (
             <RecordCard key={r._id} record={r} onOpen={() => setPicked(r)} />
           ))}
@@ -174,38 +193,65 @@ function Header({ isAdmin, loading, onReload }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-function StatGrid({ s }) {
+function StatGrid({ s, activeRole, onRoleClick }) {
   const items = [
-    { label: '单据总数',   value: s.total,     color: '#6366F1' },
-    { label: '主导项目数', value: s.leadCount, color: '#DC2626' },
+    { key: '主导者', color: '#DC2626', icon: Crown,    value: s['主导者'] || 0 },
+    { key: '参与者', color: '#4F46E5', icon: Sparkles, value: s['参与者'] || 0 },
+    { key: '支持者', color: '#0369A1', icon: User,     value: s['支持者'] || 0 },
   ]
   return (
-    <div className="grid grid-cols-2 gap-3">
-      {items.map(it => (
-        <div key={it.label} className="card p-4">
-          <div className="text-xs font-medium mb-2" style={{ color: 'var(--muted)' }}>{it.label}</div>
-          <p className="text-2xl font-bold tabular-nums" style={{ color: it.color }}>{it.value}</p>
-        </div>
-      ))}
+    <div className="grid grid-cols-3 gap-3">
+      {items.map(it => {
+        const active = activeRole === it.key
+        const Icon = it.icon
+        return (
+          <button key={it.key}
+            onClick={() => onRoleClick(active ? '' : it.key)}
+            className="card press p-4 text-left relative overflow-hidden"
+            style={{
+              borderColor: active ? it.color : undefined,
+              boxShadow: active ? `0 0 0 2px ${it.color}33, 0 4px 16px ${it.color}22` : undefined,
+            }}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="inline-flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--muted)' }}>
+                <Icon className="w-3.5 h-3.5" style={{ color: it.color }} />{it.key}
+              </span>
+              {active && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                style={{ background: `${it.color}18`, color: it.color }}>已筛选</span>}
+            </div>
+            <p className="text-2xl font-bold tabular-nums" style={{ color: it.color }}>
+              {it.value}<span className="text-xs font-medium ml-1" style={{ color: 'var(--muted)' }}>个</span>
+            </p>
+          </button>
+        )
+      })}
     </div>
   )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-function Toolbar({ keyword, setKeyword, role, setRole, roleOpts, cat, setCat, catOpts, sort, setSort, count }) {
+function Toolbar({ keyword, setKeyword, role, setRole, roleOpts,
+                   cat, setCat, catOpts, buyer, setBuyer, buyerOpts,
+                   org, setOrg, orgOpts, sort, setSort, count, isAdmin }) {
   return (
     <div className="rounded-2xl p-3 flex items-center gap-2.5 flex-wrap"
       style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
       <div className="relative flex-1 min-w-[200px]">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--muted)' }} />
         <input value={keyword} onChange={e => setKeyword(e.target.value)}
-          placeholder="搜索项目 / 供应商 / 合同号…"
+          placeholder="搜索项目 / 供应商 / 合同号 / 采购员…"
           className="w-full pl-9 pr-3 py-2 rounded-xl text-[13px] outline-none transition-colors"
           style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid transparent' }} />
       </div>
 
       <Select value={role} onChange={setRole} placeholder="全部角色" options={roleOpts} />
       <Select value={cat}  onChange={setCat}  placeholder="全部品类" options={catOpts} />
+      {isAdmin && buyerOpts.length > 1 && (
+        <Select value={buyer} onChange={setBuyer} placeholder="全部采购员" options={buyerOpts} />
+      )}
+      {orgOpts.length > 1 && (
+        <Select value={org} onChange={setOrg} placeholder="全部采购组织" options={orgOpts} />
+      )}
 
       <Select value={sort} onChange={setSort} options={[
         { value: 'saving-desc', label: '按降本金额' },
@@ -246,22 +292,29 @@ function RecordCard({ record, onOpen }) {
   const saving    = num(f[F.savingAdjusted])
   const winAmount = num(f[F.winAmount])
   const rate      = winAmount > 0 ? saving / winAmount : num(f[F.saveRate])
-  const cat       = toArr(f[F.categoryBig])[0]
+  const catArr    = toArr(f[F.categoryBig])
+  const cat       = catArr[0] || ''
+  const catEmpty  = catArr.length === 0
   const attachCount = [F.priceAttach, F.roleAttach, F.marketAttach, F.otherAttach, F.quoteAttach]
     .reduce((s, fld) => s + (Array.isArray(f[fld]) ? f[fld].length : 0), 0)
 
   return (
     <button onClick={onOpen}
-      className="card text-left w-full rounded-2xl p-5">
+      className="card cost-card text-left w-full rounded-2xl p-5 group">
       {/* 顶部：角色 + 品类 */}
       <div className="flex items-center justify-between mb-4">
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-semibold"
           style={{ background: roleStyle.bg, color: roleStyle.color }}>
           <RoleIcon className="w-2.5 h-2.5" />{roleStyle.label}
         </span>
-        {cat && (
-          <span className="text-[10.5px]" style={{ color: 'var(--muted)' }}>{cat}</span>
-        )}
+        <span className="text-[10.5px] px-1.5 py-0.5 rounded"
+          style={{
+            color: catEmpty ? '#F59E0B' : 'var(--muted)',
+            background: catEmpty ? 'rgba(245,158,11,0.1)' : 'transparent',
+            fontWeight: catEmpty ? 600 : 400,
+          }}>
+          {catEmpty ? '未确认' : cat}
+        </span>
       </div>
 
       {/* 标识：项目名 + 供应商（固定 2 行高度） */}
@@ -487,16 +540,21 @@ function Section({ title, icon: Icon, hint, stars = 0, children }) {
 
 // 可编辑行：按字段类型分发（text / longText / number / singleSelect / multipleSelect）
 function EditableRow({ meta, value, onChange, choices, edit }) {
-  const { label, type, stars, unit } = meta
+  const { name, type, unit } = meta
+  // 原始字段名中若带 ⭐⭐⭐ 前缀，提取出来用金色强调
+  const starMatch = name.match(/^(⭐+)(.*)$/)
+  const starPrefix = starMatch?.[1] || ''
+  const rawLabel = (starMatch?.[2] ?? name).trim()
 
   const labelBlock = (
-    <div className="flex items-center gap-1.5 mb-1.5">
-      {stars > 0 && (
-        <span className="text-[10.5px] tracking-tighter" style={{ color: stars >= 3 ? '#F59E0B' : '#6366F1' }}>
-          {'★'.repeat(stars)}
+    <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+      {starPrefix && (
+        <span className="text-[11px] tracking-tighter"
+          style={{ color: starPrefix.length >= 3 ? '#F59E0B' : '#6366F1' }}>
+          {starPrefix}
         </span>
       )}
-      <span className="text-[11.5px] font-medium" style={{ color: 'var(--muted)' }}>{label}</span>
+      <span className="text-[11.5px] font-medium break-all" style={{ color: 'var(--text)', opacity: 0.8 }}>{rawLabel}</span>
       {unit && <span className="text-[10.5px]" style={{ color: 'var(--muted)', opacity: 0.7 }}>（{unit}）</span>}
     </div>
   )

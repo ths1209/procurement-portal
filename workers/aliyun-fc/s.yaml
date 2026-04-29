@@ -1,0 +1,40 @@
+# Serverless Devs 部署描述（可选，通过 s deploy 一键部署；不用 s 也能走控制台手动部署）
+# 安装：npm i -g @serverless-devs/s
+# 初始化凭证：s config add（填阿里云 AccessKeyID / Secret）
+# 部署：cd workers/aliyun-fc && s deploy -y
+edition: 3.0.0
+name: pp-sso
+
+resources:
+  pp-sso:
+    component: fc3
+    props:
+      region: cn-hangzhou                 # 地域：按你账号的常用地域改，如 cn-shanghai / cn-beijing
+      functionName: pp-sso
+      description: 采购门户 SSO 中转（100tal）
+      runtime: custom.debian10            # Node 18 走 Custom Runtime 最灵活
+      cpu: 0.35
+      memorySize: 512
+      diskSize: 512
+      timeout: 30
+      handler: index.handler              # Custom Runtime Web 模式下无意义，占位即可
+      code: ./                            # 当前目录打包上传
+      customRuntimeConfig:
+        command:
+          - node
+        args:
+          - index.js
+        port: 9000
+      environmentVariables:
+        # 以下三项需在 FC 控制台或此处填写；敏感值建议走控制台改为 secret
+        APP_ID:        ""                 # 100tal appid
+        APP_KEY:       ""                 # 100tal appkey（推荐控制台设，勿提交仓库）
+        ALLOW_ORIGINS: "https://ths1209.github.io,http://localhost:5173"
+      triggers:
+        - triggerName: http
+          triggerType: http
+          triggerConfig:
+            authType: anonymous           # 匿名访问，CORS 由应用层控制
+            methods:
+              - GET
+              - OPTIONS

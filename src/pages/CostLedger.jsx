@@ -212,27 +212,58 @@ function Header({ isAdmin, loading, onReload, shareUrl }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// 视图切换 tabs：极简风，激活 tab 带主色下划线
+// 视图名前缀 emoji → 纯色 HEX（Teable 视图名常带 🚩🟢🔴🟡 等图标）
+const VIEW_EMOJI_COLOR = {
+  '🚩': '#EF4444', '🏁': '#EF4444',
+  '🟢': '#22C55E', '🟩': '#22C55E', '✅': '#22C55E',
+  '🔴': '#DC2626', '⭕': '#DC2626',
+  '🟡': '#F59E0B', '🟨': '#F59E0B', '⚠️': '#F59E0B',
+  '🟠': '#F97316',
+  '🔵': '#3B82F6', '🟦': '#3B82F6',
+  '🟣': '#8B5CF6',
+  '⚫': '#475569', '⚪': '#94A3B8',
+}
+// 回退调色板：视图名没有 emoji 时按索引分配
+const VIEW_FALLBACK = ['#6366F1', '#22C55E', '#F59E0B', '#EC4899', '#0EA5E9']
+
+function parseViewName(raw, idx) {
+  const name = String(raw || '').trim()
+  // 取首个字符（可能是 emoji，emoji 可能 2 个 code unit）
+  const first2 = name.slice(0, 2)
+  const first1 = name.slice(0, 1)
+  if (VIEW_EMOJI_COLOR[first2]) return { color: VIEW_EMOJI_COLOR[first2], label: name.slice(2).trim() }
+  if (VIEW_EMOJI_COLOR[first1]) return { color: VIEW_EMOJI_COLOR[first1], label: name.slice(1).trim() }
+  return { color: VIEW_FALLBACK[idx % VIEW_FALLBACK.length], label: name }
+}
+
+// 视图切换 tabs：去 emoji，换成纯色小方块，激活带主色下划线
 function ViewTabs({ views, current, onSwitch, loading }) {
   if (!views.length) return null
   return (
     <div className="flex items-center gap-1 overflow-x-auto px-1 -mx-1"
       style={{ borderBottom: '1px solid var(--border)' }}>
-      {views.map(v => {
+      {views.map((v, idx) => {
         const active = v.id === current
+        const { color, label } = parseViewName(v.name, idx)
         return (
           <button key={v.id}
             onClick={() => onSwitch(v.id)}
             disabled={loading && active}
-            className="view-tab press relative px-3 py-2 text-[12.5px] font-medium whitespace-nowrap transition-colors shrink-0"
+            className="view-tab press relative inline-flex items-center gap-2 px-3 py-2 text-[12.5px] whitespace-nowrap transition-colors shrink-0"
             style={{
-              color: active ? '#6366F1' : 'var(--muted)',
+              color: active ? 'var(--text)' : 'var(--muted)',
               fontWeight: active ? 600 : 500,
             }}>
-            {v.name}
+            <span className="w-2 h-2 rounded-sm shrink-0"
+              style={{
+                background: color,
+                opacity: active ? 1 : 0.55,
+                transition: 'opacity 0.18s ease',
+              }} />
+            {label || v.name}
             {active && (
               <span className="absolute left-3 right-3 bottom-0 h-[2px] rounded-t"
-                style={{ background: '#6366F1' }} />
+                style={{ background: color }} />
             )}
           </button>
         )

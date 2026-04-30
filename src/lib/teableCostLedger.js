@@ -26,6 +26,7 @@ export const F = {
   buyerJobId:     '采购员工号',
   buyerOrg:       '采购组织',
   createdBy:      '创建人',
+  permMembers:    '成员权限列', // 权限矩阵聚合出的可见成员（multi-user 字段）
 
   // 项目基础
   checkKey:       '检索值',
@@ -140,30 +141,35 @@ async function req(path, init = {}) {
 
 // ── 拉数据 ───────────────────────────────────────────────────────────────────
 /**
- * 拉取成本台账数据。普通用户仅返回自己的记录（按工号匹配），管理员拉全部。
- * @param {Object} profile - { jobId, displayName, role }
- * @param {string} [viewId] - 视图 id，默认使用 DEFAULT_VIEW
+ * 拉取成本台账数据。
+ * 权限规则（以"成员权限列"为准，由 Teable 端自动化基于权限矩阵聚合）：
+ *   - admin           → 可见全部
+ *   - 其他登录用户     → 仅可见「成员权限列」包含其 email 的记录
+ * @param {Object} profile - { email, role, ... }
+ * @param {string} [viewId] - 视图 id，默认 DEFAULT_VIEW
  */
 export async function listCostLedger(profile, viewId = DEFAULT_VIEW) {
   if (!TID) return []
   const isAdmin = profile?.role === 'admin'
+  const myEmail = (profile?.email || '').trim().toLowerCase()
 
-  // 非管理员必须有工号才能过滤
-  if (!isAdmin && !profile?.jobId) return []
+  // 非管理员必须有 email 才能比对
+  if (!isAdmin && !myEmail) return []
 
-  // 用 viewId 让后端应用视图的 filter/sort
-  let url = `/table/${TID}/record?take=1000&fieldKeyType=name&viewId=${viewId || DEFAULT_VIEW}`
+  // viewId 负责视图级 filter / sort；权限过滤在客户端按 email 做
+  const url = `/table/${TID}/record?take=1000&fieldKeyType=name&viewId=${viewId || DEFAULT_VIEW}`
+  const data = await req(url)
+  let records = (data?.records ?? []).map(normalize)
+
   if (!isAdmin) {
-    // viewId 之外额外叠加工号过滤
-    const filter = {
-      conjunction: 'and',
-      filterSet: [{ fieldId: F.buyerJobId, operator: 'is', value: String(profile.jobId) }],
-    }
-    url += `&filter=${encodeURIComponent(JSON.stringify(filter))}`
+    records = records.filter(r => {
+      const members = r.fields?.[F.permMembers]
+      if (!Array.isArray(members)) return false
+      return members.some(m => String(m?.email || '').trim().toLowerCase() === myEmail)
+    })
   }
 
-  const data = await req(url)
-  return (data?.records ?? []).map(normalize)
+  return records
 }
 
 // ── 拉取视图列表（用于 tab 标题） ───────────────────────────────────────────

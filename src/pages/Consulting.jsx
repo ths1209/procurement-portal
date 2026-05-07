@@ -729,7 +729,7 @@ function ConsultingMonthlyReport({ rows, onClose }) {
     // 按类型统计（取前 6）
     const typeMap = {}
     monthRows.forEach(r => { if (r.qType) typeMap[r.qType] = (typeMap[r.qType] ?? 0) + 1 })
-    const byType = Object.entries(typeMap).sort(([, a], [, b]) => b - a).slice(0, 6)
+    const byType = Object.entries(typeMap).sort(([, a], [, b]) => b - a)
     // 按处理人统计
     const handlerMap = {}
     monthRows.forEach(r => { if (r.handler) handlerMap[r.handler] = (handlerMap[r.handler] ?? 0) + 1 })
@@ -771,7 +771,7 @@ function ConsultingMonthlyReport({ rows, onClose }) {
 - 已关闭：${stats.closed}  处理中：${stats.inProc}  待处理：${stats.open}
 - 关闭率：${stats.closeRate}%
 
-## 问题类型分布（前6）
+## 问题类型分布
 ${stats.byType.map(([t, n]) => `  - ${t}：${n} 条`).join('\n')}
 
 ## 处理人工作量
@@ -866,8 +866,11 @@ ${stats.byHandler.map(([h, n]) => `  - ${h}：${n} 条`).join('\n')}
             <div className="grid grid-cols-2 gap-3">
               {/* 问题类型 */}
               <div>
-                <p className="text-[11px] font-semibold mb-2" style={{ color: 'var(--muted)' }}>问题类型分布</p>
-                <div className="flex flex-col gap-1.5">
+                <p className="text-[11px] font-semibold mb-2 flex items-center justify-between" style={{ color: 'var(--muted)' }}>
+                  <span>问题类型分布</span>
+                  <span className="text-[10px] font-normal tabular-nums" style={{ opacity: 0.7 }}>{stats.byType.length} 类</span>
+                </p>
+                <div className="scroll-thin flex flex-col gap-1.5 pr-1" style={{ maxHeight: 240, overflowY: 'auto' }}>
                   {stats.byType.map(([t, n]) => {
                     const cfg = Q_TYPE_CFG[t] ?? { color: '#6B7280' }
                     return (
@@ -876,7 +879,7 @@ ${stats.byHandler.map(([h, n]) => `  - ${h}：${n} 条`).join('\n')}
                         <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--surface2)' }}>
                           <div className="h-full rounded-full" style={{ width: `${(n / stats.byType[0][1]) * 100}%`, background: cfg.color }} />
                         </div>
-                        <span className="text-[11px] w-5 text-right font-semibold shrink-0" style={{ color: 'var(--text)' }}>{n}</span>
+                        <span className="text-[11px] w-6 text-right font-semibold shrink-0 tabular-nums" style={{ color: 'var(--text)' }}>{n}</span>
                       </div>
                     )
                   })}
@@ -885,15 +888,18 @@ ${stats.byHandler.map(([h, n]) => `  - ${h}：${n} 条`).join('\n')}
 
               {/* 处理人 */}
               <div>
-                <p className="text-[11px] font-semibold mb-2" style={{ color: 'var(--muted)' }}>处理人工作量</p>
-                <div className="flex flex-col gap-1.5">
+                <p className="text-[11px] font-semibold mb-2 flex items-center justify-between" style={{ color: 'var(--muted)' }}>
+                  <span>处理人工作量</span>
+                  <span className="text-[10px] font-normal tabular-nums" style={{ opacity: 0.7 }}>{stats.byHandler.length} 人</span>
+                </p>
+                <div className="scroll-thin flex flex-col gap-1.5 pr-1" style={{ maxHeight: 240, overflowY: 'auto' }}>
                   {stats.byHandler.map(([h, n]) => (
                     <div key={h} className="flex items-center gap-2">
-                      <span className="text-[11px] w-12 shrink-0 truncate" style={{ color: 'var(--muted)' }}>{h}</span>
+                      <span className="text-[11px] w-14 shrink-0 truncate" style={{ color: 'var(--muted)' }}>{h}</span>
                       <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--surface2)' }}>
                         <div className="h-full rounded-full" style={{ width: `${(n / stats.byHandler[0][1]) * 100}%`, background: '#6366F1' }} />
                       </div>
-                      <span className="text-[11px] w-5 text-right font-semibold shrink-0" style={{ color: 'var(--text)' }}>{n}</span>
+                      <span className="text-[11px] w-6 text-right font-semibold shrink-0 tabular-nums" style={{ color: 'var(--text)' }}>{n}</span>
                     </div>
                   ))}
                 </div>

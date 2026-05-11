@@ -40,6 +40,7 @@ function useLocal(key, def) {
 export default function Dashboard() {
   const { profile } = useAuth()
   const isAdmin = profile?.role === 'admin'
+  const myIdentity = profile?.displayName || profile?.email || ''
   // 集团采购部成员只能看采购部通用分组
   const visibleGroups = (profile?.role !== 'admin' && profile?.dept === '集团采购部')
     ? ['采购部通用']
@@ -215,6 +216,7 @@ export default function Dashboard() {
               urlTools={urlTools.filter(t => (t.group ?? '采购部通用') === currentGroup)}
               fileTools={fileTools.filter(t => t.group === currentGroup)}
               isAdmin={isAdmin}
+              myIdentity={myIdentity}
               nameMap={{ [profile?.email]: profile?.displayName }}
               onAdd={() => setAddGroup(currentGroup)}
               onDelUrl={id => configured ? handleDelTool(id) : ai.del(id)}
@@ -234,7 +236,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 stagger">
           {dashItems.map((d, idx) => (
             <DashCard key={d._id || d.id} item={{ ...d, g: d.g ?? (idx % GRADS.length) }}
-              isAdmin={isAdmin}
+              canDelete={isAdmin || (!!myIdentity && d.uploadedBy === myIdentity)}
               onDel={() => configured ? handleDelTool(d._id) : dash.del(d.id)}
               onPrev={() => openPreview(d.url || d.fileUrl)}
               onOpen={() => bumpUsage('dashItems', d)} />
@@ -304,10 +306,11 @@ function Section({ title, sub, icon, iconBg, iconClr, onAdd, children }) {
 }
 
 // ─── 分组面板 ─────────────────────────────────────────────────────────────────
-function GroupPanel({ group, urlTools, fileTools, isAdmin, onAdd, onDelUrl, onDelFile, onDownload, onUrlClick, nameMap = {} }) {
+function GroupPanel({ group, urlTools, fileTools, isAdmin, myIdentity = '', onAdd, onDelUrl, onDelFile, onDownload, onUrlClick, nameMap = {} }) {
   const cfg = GROUP_CFG[group] ?? { icon: Layers, color:'#64748B', bg:'rgba(100,116,139,0.07)' }
   const total = urlTools.length + fileTools.length
   const resolveName = v => (v && nameMap[v]) ? nameMap[v] : v
+  const canDeleteTool = t => isAdmin || (!!myIdentity && t.uploadedBy === myIdentity)
 
   return (
     <div style={{ background:`linear-gradient(160deg, ${cfg.color}04 0%, var(--surface) 45%)` }}>
@@ -329,7 +332,7 @@ function GroupPanel({ group, urlTools, fileTools, isAdmin, onAdd, onDelUrl, onDe
         {urlTools.map(t => (
           <ToolRow key={t._id || t.id} icon={t.icon} name={t.name} desc={t.desc}
             uploadedBy={resolveName(t.uploadedBy)}
-            isAdmin={isAdmin} onDel={() => onDelUrl(t._id || t.id)}
+            canDelete={canDeleteTool(t)} onDel={() => onDelUrl(t._id || t.id)}
             badge={t.downloads > 0 ? `↗ ${t.downloads}` : null}
             accentColor={cfg.color}
             action={
@@ -346,7 +349,7 @@ function GroupPanel({ group, urlTools, fileTools, isAdmin, onAdd, onDelUrl, onDe
           <ToolRow key={t._id} icon={t.icon} name={t.name}
             desc={t.desc || t.fileName}
             uploadedBy={resolveName(t.uploadedBy)}
-            isAdmin={isAdmin} onDel={() => onDelFile(t._id)}
+            canDelete={canDeleteTool(t)} onDel={() => onDelFile(t._id)}
             badge={t.downloads > 0 ? `↓ ${t.downloads}` : null}
             accentColor={cfg.color}
             action={
@@ -369,7 +372,7 @@ function GroupPanel({ group, urlTools, fileTools, isAdmin, onAdd, onDelUrl, onDe
 }
 
 // ─── 工具行（列表样式）────────────────────────────────────────────────────────
-function ToolRow({ icon, name, desc, isAdmin, onDel, action, badge, uploadedBy, accentColor }) {
+function ToolRow({ icon, name, desc, canDelete, onDel, action, badge, uploadedBy, accentColor }) {
   return (
     <div className="flex items-center gap-3 px-3.5 py-2.5 group transition-colors"
       style={{ borderBottom:'1px solid var(--border)' }}
@@ -394,7 +397,7 @@ function ToolRow({ icon, name, desc, isAdmin, onDel, action, badge, uploadedBy, 
             {uploadedBy}
           </span>
         )}
-        {isAdmin && (
+        {canDelete && (
           <button onClick={onDel}
             className="press w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/10"
             style={{ color:'var(--muted)' }}
@@ -410,7 +413,7 @@ function ToolRow({ icon, name, desc, isAdmin, onDel, action, badge, uploadedBy, 
 }
 
 // ─── DashCard（方形紧凑）─────────────────────────────────────────────────────
-function DashCard({ item, isAdmin, onDel, onPrev, onOpen }) {
+function DashCard({ item, canDelete, onDel, onPrev, onOpen }) {
   const clr = GRADS[item.g ?? 4]
   return (
     <div className="group flex flex-col overflow-hidden rounded-2xl transition-all duration-200 hover:-translate-y-0.5"
@@ -432,7 +435,7 @@ function DashCard({ item, isAdmin, onDel, onPrev, onOpen }) {
             ↗ {item.downloads}
           </span>
         )}
-        {isAdmin && (
+        {canDelete && (
           <button onClick={onDel}
             className="press absolute top-1.5 right-1.5 w-5 h-5 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
             style={{ background:'rgba(0,0,0,0.06)', color:'var(--muted)' }}

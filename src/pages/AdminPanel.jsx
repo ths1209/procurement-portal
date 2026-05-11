@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { RefreshCw, UserCheck, UserX, ShieldCheck, Users, BarChart2, Eye, MousePointer } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { RefreshCw, UserCheck, UserX, ShieldCheck, Users, BarChart2, Eye, MousePointer, CalendarRange, X as XIcon } from 'lucide-react'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { listUsers, updateUser, ensureUserFields } from '../lib/teable'
 import { useAuth } from '../contexts/AuthContext'
@@ -156,8 +156,17 @@ export default function AdminPanel() {
   )
 }
 
+// YYYY-MM-DD 相差天数
+function dayDiff(s, e) {
+  const a = new Date(s).getTime()
+  const b = new Date(e).getTime()
+  return Math.round((b - a) / 86400000)
+}
+
 // ─── 访问统计模块 ─────────────────────────────────────────────────────────────
 function AnalyticsSection({ data, loading }) {
+  const [range, setRange] = useState({ start: '', end: '' })
+
   const statCards = [
     { label: '今日 PV', value: data?.todayPV ?? 0, icon: <Eye className="w-4 h-4" />, clr: '#6366F1' },
     { label: '今日 UV', value: data?.todayUV ?? 0, icon: <Users className="w-4 h-4" />, clr: '#10B981' },
@@ -165,18 +174,64 @@ function AnalyticsSection({ data, loading }) {
     { label: '本月 UV', value: data?.monthUV ?? 0, icon: <MousePointer className="w-4 h-4" />, clr: '#F59E0B' },
   ]
 
+  // 自定义日期范围:起止日期都填且 start ≤ end 时才生效
+  const customStats = useMemo(() => {
+    if (!range.start || !range.end || !data?.byDate) return null
+    const [s, e] = range.start <= range.end ? [range.start, range.end] : [range.end, range.start]
+    let pv = 0
+    const uvSet = new Set()
+    for (const [d, v] of Object.entries(data.byDate)) {
+      if (d < s || d > e) continue
+      pv += v.pv || 0
+      ;(v.uids || []).forEach(u => uvSet.add(u))
+    }
+    return { pv, uv: uvSet.size, days: dayDiff(s, e) + 1 }
+  }, [range, data])
+
+  const setQuick = (days) => {
+    const end = new Date().toISOString().slice(0, 10)
+    const start = new Date(Date.now() - (days - 1) * 86400000).toISOString().slice(0, 10)
+    setRange({ start, end })
+  }
+
   return (
     <div className="space-y-3">
-      {/* 标题 */}
-      <div className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+      {/* 标题 + 日期筛选器 */}
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3 rounded-2xl"
         style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-          style={{ background: 'rgba(99,102,241,0.1)', color: '#6366F1' }}>
-          <BarChart2 className="w-4 h-4" />
+        <div className="flex items-center gap-3 flex-1 min-w-[200px]">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+            style={{ background: 'rgba(99,102,241,0.1)', color: '#6366F1' }}>
+            <BarChart2 className="w-4 h-4" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-[14px] leading-none" style={{ color: 'var(--text)' }}>访问统计</h3>
+            <p className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>网站 PV / UV 趋势 · 近 30 天</p>
+          </div>
         </div>
-        <div>
-          <h3 className="font-semibold text-[14px] leading-none" style={{ color: 'var(--text)' }}>访问统计</h3>
-          <p className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>网站 PV / UV 趋势 · 近 30 天</p>
+
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <CalendarRange className="w-3.5 h-3.5 shrink-0" style={{ color:'var(--muted)' }} />
+          {[['今日',1],['近7天',7],['近30天',30]].map(([lbl, n]) => (
+            <button key={lbl} onClick={() => setQuick(n)}
+              className="press px-2.5 py-1 rounded-lg text-[11px] font-medium"
+              style={{ background:'var(--surface2)', color:'var(--muted)', border:'1px solid var(--border)' }}>
+              {lbl}
+            </button>
+          ))}
+          <input type="date" value={range.start} onChange={e => setRange(r => ({ ...r, start: e.target.value }))}
+            className="field text-[11px] py-1 px-2" style={{ width:130 }} />
+          <span className="text-[11px]" style={{ color:'var(--muted)' }}>→</span>
+          <input type="date" value={range.end} onChange={e => setRange(r => ({ ...r, end: e.target.value }))}
+            className="field text-[11px] py-1 px-2" style={{ width:130 }} />
+          {(range.start || range.end) && (
+            <button onClick={() => setRange({ start:'', end:'' })}
+              className="press w-6 h-6 flex items-center justify-center rounded-lg"
+              style={{ background:'var(--surface2)', color:'var(--muted)' }}
+              title="清除">
+              <XIcon className="w-3 h-3" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -200,6 +255,32 @@ function AnalyticsSection({ data, loading }) {
               </div>
             ))}
           </div>
+
+          {/* 自定义区间 PV / UV(选择日期后展示) */}
+          {customStats && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="card p-4 flex flex-col gap-2"
+                style={{ borderColor:'rgba(139,92,246,0.3)', boxShadow:'0 0 0 1px rgba(139,92,246,0.12)' }}>
+                <div className="flex items-center gap-2" style={{ color:'#7C3AED' }}>
+                  <Eye className="w-4 h-4" />
+                  <span className="text-xs font-medium" style={{ color:'var(--muted)' }}>
+                    区间 PV · {customStats.days} 天
+                  </span>
+                </div>
+                <p className="text-2xl font-bold" style={{ color:'#7C3AED' }}>{customStats.pv}</p>
+              </div>
+              <div className="card p-4 flex flex-col gap-2"
+                style={{ borderColor:'rgba(236,72,153,0.3)', boxShadow:'0 0 0 1px rgba(236,72,153,0.12)' }}>
+                <div className="flex items-center gap-2" style={{ color:'#DB2777' }}>
+                  <Users className="w-4 h-4" />
+                  <span className="text-xs font-medium" style={{ color:'var(--muted)' }}>
+                    区间 UV · {customStats.days} 天
+                  </span>
+                </div>
+                <p className="text-2xl font-bold" style={{ color:'#DB2777' }}>{customStats.uv}</p>
+              </div>
+            </div>
+          )}
 
           {/* PV/UV 趋势折线图 */}
           <div className="card p-5">

@@ -1,9 +1,14 @@
 /**
- * 网站访问统计 — 通过后端代理 /t/analytics/*。
- * API 未配置时降级 localStorage(仅本机可见)。
+ * 网站访问统计模块
+ * 需配置 VITE_TEABLE_ANALYTICS_TABLE_ID 才会写入 Teable
+ * 未配置时降级到 localStorage(仅当前浏览器可见)
+ *
+ * 注:保留直连 Teable 模式,后端 /t/analytics 代理尚未部署到阿里云 FC。
  */
 
-import { api, isApiConfigured } from './api'
+const BASE  = (import.meta.env.VITE_TEABLE_API_BASE ?? '').replace(/\/$/, '')
+const TOKEN = import.meta.env.VITE_TEABLE_TOKEN ?? ''
+const TID   = import.meta.env.VITE_TEABLE_ANALYTICS_TABLE_ID ?? ''
 
 const LS_KEY = 'pp_analytics'
 
@@ -17,17 +22,35 @@ export const PAGE_NAMES = {
   '/admin':      '用户管理',
 }
 
-function today() { return new Date().toISOString().slice(0, 10) }
+function today() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+async function req(path, init = {}) {
+  const res = await fetch(`${BASE}/api${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${TOKEN}`,
+      'Content-Type': 'application/json',
+      ...(init.headers ?? {}),
+    },
+  })
+  if (!res.ok) return null
+  if (res.status === 204) return null
+  return res.json().catch(() => null)
+}
 
 export async function trackVisit({ userId, displayName, page }) {
   const pageName = PAGE_NAMES[page] ?? page
   const date = today()
   const visitedAt = new Date().toISOString()
 
-  if (isApiConfigured()) {
-    api.post('/t/analytics/records', {
-      fieldKeyType: 'name',
-      records: [{ fields: { 用户ID: userId, 姓名: displayName, 页面: pageName, 日期: date, 访问时间: visitedAt } }],
+  if (TID) {
+    req(`/table/${TID}/record?fieldKeyType=name`, {
+      method: 'POST',
+      body: JSON.stringify({
+        records: [{ fields: { 用户ID: userId, 姓名: displayName, 页面: pageName, 日期: date, 访问时间: visitedAt } }],
+      }),
     }).catch(() => {})
     return
   }
@@ -46,30 +69,27 @@ export async function trackVisit({ userId, displayName, page }) {
 }
 
 export async function loadAnalytics() {
-  if (isApiConfigured()) return loadFromApi()
+  if (TID) return loadFromTeable()
   return loadFromLocalStorage()
 }
 
-async function loadFromApi() {
+async function loadFromTeable() {
   const PAGE = 500
   let skip = 0
   let all = []
-  try {
-    while (true) {
-      const data = await api.get('/t/analytics/records', { take: PAGE, skip, fieldKeyType: 'name' })
-      const records = data?.records ?? []
-      all = all.concat(records.map(r => ({
-        userId:    r.fields['用户ID'] ?? '',
-        name:      r.fields['姓名'] ?? '',
-        page:      r.fields['页面'] ?? '',
-        date:      r.fields['日期'] ?? '',
-        visitedAt: r.fields['访问时间'] ?? '',
-      })))
-      if (records.length < PAGE) break
-      skip += PAGE
-    }
-  } catch (e) {
-    console.warn('[analytics] 拉取失败:', e.message)
+  while (true) {
+    const data = await req(`/table/${TID}/record?take=${PAGE}&skip=${skip}&fieldKeyType=name`)
+    if (!data) break
+    const records = data.records ?? []
+    all = all.concat(records.map(r => ({
+      userId:    r.fields['用户ID'] ?? '',
+      name:      r.fields['姓名'] ?? '',
+      page:      r.fields['页面'] ?? '',
+      date:      r.fields['日期'] ?? '',
+      visitedAt: r.fields['访问时间'] ?? '',
+    })))
+    if (records.length < PAGE) break
+    skip += PAGE
   }
   return buildStats(all)
 }
@@ -101,7 +121,7 @@ function buildStats(all) {
 
   // 近 30 天(用于趋势图 + 今日/本月卡片)
   const byDate = {}
-  // 全量(用于自定义日期筛选),按需扩展时间窗口
+  // 全量(供前端按自定义区间聚合;不做 cutoff 限制)
   const byDateAll = {}
   for (const r of all) {
     if (!r.date) continue
@@ -148,7 +168,6 @@ function buildStats(all) {
     d.uvSet.forEach(u => monthUVSet.add(u))
   }
 
-  // byDate 全量(JSON-safe),供前端按自定义日期范围聚合
   const byDateFlat = Object.fromEntries(
     Object.entries(byDateAll).map(([d, v]) => [d, { pv: v.pv, uids: [...v.uvSet] }])
   )

@@ -17,26 +17,13 @@ import {
 } from '../lib/teableOKR'
 import { listUsers } from '../lib/teable'
 import { sendNotify } from '../lib/notify'
+import { api, isApiConfigured } from '../lib/api'
 
 const FY        = getFiscalYear()
 const ACCENT    = '#2563EB'   // 年度 OKR — 蓝色
 const Q_ACCENT  = '#7C3AED'   // 季度 OKR — 紫色
-const OKR_TID   = import.meta.env.VITE_TEABLE_OKR_TABLE_ID
 const OTHER_CLR = '#64748B'                    // 其他工作配色 — 灰蓝
 const otherKey  = objId => `_o_${objId}`      // 每个O独立的其他工作key，不含双下划线
-
-// AI 调用配置（与 aiSummary.js 保持一致）
-const AI_BASE  = (import.meta.env.VITE_AI_API_BASE  ?? '').replace(/\/$/, '')
-const AI_KEY   = import.meta.env.VITE_AI_API_KEY  ?? ''
-const AI_MODEL = import.meta.env.VITE_AI_MODEL    ?? 'claude-sonnet-4.6'
-const OR_BASE  = 'https://openrouter.ai/api/v1'
-const OR_KEY   = import.meta.env.VITE_OPENROUTER_KEY ?? ''
-const OR_MODELS = [
-  import.meta.env.VITE_OPENROUTER_MODEL ?? 'z-ai/glm-4.5-air:free',
-  'minimax/minimax-m2.5:free',
-  'stepfun/step-3.5-flash:free',
-  'meta-llama/llama-3.2-3b-instruct:free',
-]
 
 function fmtFileSize(bytes) {
   if (!bytes) return ''
@@ -130,7 +117,7 @@ export default function OKRReport() {
   const [selectedPeriod, setSelectedPeriod] = useState('')
 
   useEffect(() => {
-    if (!canAccess || !OKR_TID) { setLoading(false); return }
+    if (!canAccess || !isApiConfigured()) { setLoading(false); return }
     init()
   }, [canAccess])
 
@@ -164,13 +151,13 @@ export default function OKRReport() {
     </div>
   )
 
-  if (!OKR_TID) return (
+  if (!isApiConfigured()) return (
     <div className="max-w-md mx-auto mt-10 animate-page-in">
       <div className="card p-8 text-center space-y-3">
         <AlertCircle className="w-10 h-10 mx-auto" style={{ color: '#F59E0B' }} />
         <p className="text-sm" style={{ color: 'var(--muted)' }}>
           请配置 <code className="px-1.5 py-0.5 rounded text-xs font-mono"
-            style={{ background: 'var(--surface2)', color: '#6366F1' }}>VITE_TEABLE_OKR_TABLE_ID</code> 并重新部署
+            style={{ background: 'var(--surface2)', color: '#6366F1' }}>VITE_API_BASE</code> 并重新部署
         </p>
       </div>
     </div>
@@ -1265,41 +1252,15 @@ function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPer
   )
 }
 
-// ── AI 月报 / 年报（含 OpenRouter 兜底） ───────────────────────────────────────
+// ── AI 月报 / 年报 — 通过后端代理 /ai/chat ─────────────────────────────────────
 async function callAI(prompt) {
-  // 1. 直连内部 AI
-  if (AI_BASE && AI_KEY && AI_BASE.startsWith('https')) {
-    try {
-      const res = await fetch(`${AI_BASE}/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${AI_KEY}` },
-        body: JSON.stringify({ model: AI_MODEL, messages: [{ role: 'user', content: prompt }], max_tokens: 2000 }),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        const text = data.choices?.[0]?.message?.content?.trim()
-        if (text) return text
-      }
-    } catch { /* fall through */ }
-  }
-  // 2. OpenRouter 兜底
-  if (!OR_KEY) throw new Error('内部 AI 接口不可用，且未配置 VITE_OPENROUTER_KEY')
-  for (const model of OR_MODELS) {
-    try {
-      const res = await fetch(`${OR_BASE}/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OR_KEY}`,
-          'HTTP-Referer': window.location.origin, 'X-Title': 'OKR Report' },
-        body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], max_tokens: 2000 }),
-      })
-      if (res.status === 429 || res.status === 403) continue
-      if (!res.ok) continue
-      const data = await res.json()
-      const text = data.choices?.[0]?.message?.content?.trim()
-      if (text) return text
-    } catch { continue }
-  }
-  throw new Error('AI 服务暂时不可用，请稍后重试')
+  const { text } = await api.post('/ai/chat', {
+    messages: [{ role: 'user', content: prompt }],
+    maxTokens: 2000,
+    temperature: 0.7,
+  })
+  if (!text) throw new Error('AI 服务暂时不可用，请稍后重试')
+  return text
 }
 
 function AIReportPanel({ annualOkr, quarterlyOkr, periods, allReports }) {

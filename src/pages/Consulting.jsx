@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { Modal } from './Dashboard'
 import { useAuth } from '../contexts/AuthContext'
+import { api } from '../lib/api'
 import {
   listConsulting, createRecord, updateRecord, deleteRecord,
   isConfigured, C, Q_TYPE_OPTS, Q_STAGE_OPTS, STATUS_OPTS, Q_TYPE_CFG,
@@ -48,56 +49,19 @@ const STATUS_CFG = {
   'CLOSE':      { color: '#10B981', bg: 'rgba(16,185,129,0.1)',  border: 'rgba(16,185,129,0.3)'  },
 }
 
-/* ── 咨询月报 AI 调用 ── */
-const OR_BASE  = 'https://openrouter.ai/api/v1'
-const OR_KEY   = import.meta.env.VITE_OPENROUTER_KEY ?? ''
-// 备用模型链：主模型限速时依次尝试
-const OR_MODELS = [
-  import.meta.env.VITE_OPENROUTER_MODEL ?? 'z-ai/glm-4.5-air:free',
-  'minimax/minimax-m2.5:free',
-  'stepfun/step-3.5-flash:free',
-  'meta-llama/llama-3.2-3b-instruct:free',
-]
-const AI_BASE  = (import.meta.env.VITE_AI_API_BASE ?? '').replace(/\/$/, '')
-const AI_KEY   = import.meta.env.VITE_AI_API_KEY   ?? ''
-const AI_MODEL = import.meta.env.VITE_AI_MODEL     ?? 'claude-sonnet-4.6'
-
+/* ── 咨询月报 AI 调用(走后端代理 /ai/chat) ── */
 async function callAIChat(prompt) {
-  // 优先尝试内网直连
-  if (AI_BASE && AI_KEY && AI_BASE.startsWith('https')) {
-    try {
-      const res = await fetch(`${AI_BASE}/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${AI_KEY}` },
-        body: JSON.stringify({ model: AI_MODEL, messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 700 }),
-      })
-      if (res.ok) {
-        const d = await res.json()
-        const text = d.choices?.[0]?.message?.content?.trim()
-        if (text) return text
-      }
-    } catch { /* 降级 */ }
+  try {
+    const { text } = await api.post('/ai/chat', {
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+      maxTokens: 700,
+    })
+    return text || null
+  } catch (e) {
+    console.warn('[AI] /ai/chat 失败,降级预设:', e.message)
+    return null
   }
-  // OpenRouter 备用模型链（遇到 429/403 自动换下一个）
-  if (!OR_KEY) throw new Error('未配置 OpenRouter Key')
-  let lastErr = ''
-  for (const model of OR_MODELS) {
-    try {
-      const res = await fetch(`${OR_BASE}/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OR_KEY}` },
-        body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: 700 }),
-      })
-      if (res.status === 429 || res.status === 403) { lastErr = `${model} 限速`; continue }
-      if (!res.ok) { lastErr = `${model} 错误 ${res.status}`; continue }
-      const d = await res.json()
-      const text = d.choices?.[0]?.message?.content?.trim()
-      if (text) return text
-    } catch (e) { lastErr = e.message }
-  }
-  // 所有模型不可用，返回预设总结
-  console.warn('[AI] 所有模型不可用，降级预设：', lastErr)
-  return null   // 调用方判断 null 则使用预设
 }
 
 function buildConsultingPlaceholder(year, month, stats) {

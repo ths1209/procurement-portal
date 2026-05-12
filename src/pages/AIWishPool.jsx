@@ -123,7 +123,7 @@ export default function AIWishPool() {
       <div className="max-w-xl mx-auto mt-20 text-center space-y-3">
         <Sparkles className="w-10 h-10 mx-auto wish-float" style={{ color: ACCENT, opacity: 0.5 }} />
         <p className="font-semibold" style={{ color: 'var(--text)' }}>AI 需求池未配置</p>
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>请配置 <code>VITE_TEABLE_AI_TABLE_ID</code></p>
+        <p className="text-sm" style={{ color: 'var(--muted)' }}>请配置 <code>VITE_API_BASE</code></p>
       </div>
     )
   }

@@ -1,75 +1,24 @@
 /**
- * OKR 进度报告 — Teable 数据层
- *
- * 需在 Teable 中创建新表，并配置环境变量 VITE_TEABLE_OKR_TABLE_ID
- * 表字段（代码自动创建，无需手动配置）：
- *   recordType  单行文本  'okr_setup' | 'okr_report' | 'okr_periods'
- *   typeKey     单行文本  e.g. 'annual-2026' | 'quarterly-2026-Q1' | 'all' | periodId
- *   group       单行文本  e.g. '采购一组'（reports 专用）
- *   payload     长文本   JSON 字符串
- *   updatedBy   单行文本  操作人
- *   updatedAt   单行文本  ISO 时间戳
+ * OKR 进度报告 — 通过后端代理 /t/okr/*。
+ * 附件上传走 /t/okr/records/:rid/attachment/:fid。
  */
 
-const API   = (import.meta.env.VITE_TEABLE_API_BASE ?? '').replace(/\/$/, '')
-const TOKEN = import.meta.env.VITE_TEABLE_TOKEN
-const TID   = import.meta.env.VITE_TEABLE_OKR_TABLE_ID
+import { api, isApiConfigured, getToken } from './api'
 
-async function req(path, init = {}) {
-  const res = await fetch(`${API}/api${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${TOKEN}`,
-      'Content-Type': 'application/json',
-      ...(init.headers ?? {}),
-    },
-  })
-  if (res.status === 204) return null
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body.message ?? `OKR API 错误 ${res.status}`)
-  }
-  return res.json().catch(() => null)
-}
+const BASE = (import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_SSO_WORKER_BASE ?? '').replace(/\/$/, '')
 
-// ── 字段自动创建 ─────────────────────────────────────────────────────────────
-const OKR_FIELDS = [
-  { name: 'recordType', type: 'singleLineText' },
-  { name: 'typeKey',    type: 'singleLineText' },
-  { name: 'group',      type: 'singleLineText' },
-  { name: 'payload',    type: 'longText'       },
-  { name: 'updatedBy',  type: 'singleLineText' },
-  { name: 'updatedAt',  type: 'singleLineText' },
-  { name: 'attachment', type: 'attachment'     },
-]
+// ── 字段自动建字段已移到后端,前端 no-op ──
+export async function ensureOKRFields() { /* no-op */ }
 
-export async function ensureOKRFields() {
-  if (!TID) return
-  try {
-    const existing = await req(`/table/${TID}/field`)
-    const names = new Set((existing ?? []).map(f => f.name))
-    for (const def of OKR_FIELDS) {
-      if (!names.has(def.name)) {
-        await req(`/table/${TID}/field`, {
-          method: 'POST',
-          body: JSON.stringify(def),
-        }).catch(e => console.warn(`[OKR] 创建字段 "${def.name}" 失败:`, e.message))
-      }
-    }
-  } catch (e) {
-    console.warn('[OKR] ensureOKRFields 失败:', e.message)
-  }
-}
-
-// ── 内存缓存（30s TTL） ───────────────────────────────────────────────────────
+// ── 内存缓存(30s TTL) ───────────────────────────────────────────────────────
 let _cache = null
 let _cacheAt = 0
 
 async function loadAll(force = false) {
-  if (!TID) return []
+  if (!isApiConfigured()) return []
   const now = Date.now()
   if (!force && _cache && now - _cacheAt < 30000) return _cache
-  const data = await req(`/table/${TID}/record?take=500&fieldKeyType=name`)
+  const data = await api.get('/t/okr/records', { take: 500, fieldKeyType: 'name' })
   _cache = (data?.records ?? []).map(r => ({ _id: r.id, ...(r.fields ?? {}) }))
   _cacheAt = now
   return _cache
@@ -77,8 +26,7 @@ async function loadAll(force = false) {
 
 function invalidate() { _cache = null }
 
-// ── OKR 结构（objectives + KRs） ──────────────────────────────────────────────
-// typeKey 格式：'annual-2026' | 'quarterly-2026-Q1'
+// ── OKR 结构(objectives + KRs) ──────────────────────────────────────────────
 export async function getOKRSetup(typeKey) {
   const all = await loadAll()
   const rec = all.find(r => r.recordType === 'okr_setup' && r.typeKey === typeKey)
@@ -92,14 +40,11 @@ export async function saveOKRSetup(typeKey, data, byUser) {
   const existing = all.find(r => r.recordType === 'okr_setup' && r.typeKey === typeKey)
   const fields = { payload, updatedBy: byUser, updatedAt: new Date().toISOString() }
   if (existing) {
-    await req(`/table/${TID}/record?fieldKeyType=name`, {
-      method: 'PATCH',
-      body: JSON.stringify({ records: [{ id: existing._id, fields }] }),
-    })
+    await api.patch('/t/okr/records', { fieldKeyType: 'name', records: [{ id: existing._id, fields }] })
   } else {
-    await req(`/table/${TID}/record?fieldKeyType=name`, {
-      method: 'POST',
-      body: JSON.stringify({ records: [{ fields: { recordType: 'okr_setup', typeKey, ...fields } }] }),
+    await api.post('/t/okr/records', {
+      fieldKeyType: 'name',
+      records: [{ fields: { recordType: 'okr_setup', typeKey, ...fields } }],
     })
   }
   invalidate()
@@ -119,22 +64,17 @@ export async function savePeriods(periods, byUser) {
   const existing = all.find(r => r.recordType === 'okr_periods')
   const fields = { payload, updatedBy: byUser, updatedAt: new Date().toISOString() }
   if (existing) {
-    await req(`/table/${TID}/record?fieldKeyType=name`, {
-      method: 'PATCH',
-      body: JSON.stringify({ records: [{ id: existing._id, fields }] }),
-    })
+    await api.patch('/t/okr/records', { fieldKeyType: 'name', records: [{ id: existing._id, fields }] })
   } else {
-    await req(`/table/${TID}/record?fieldKeyType=name`, {
-      method: 'POST',
-      body: JSON.stringify({ records: [{ fields: { recordType: 'okr_periods', typeKey: 'all', ...fields } }] }),
+    await api.post('/t/okr/records', {
+      fieldKeyType: 'name',
+      records: [{ fields: { recordType: 'okr_periods', typeKey: 'all', ...fields } }],
     })
   }
   invalidate()
 }
 
 // ── 各组进度报告 ───────────────────────────────────────────────────────────────
-// payload 格式：{ [krId]: { status: 'notstart'|'progress'|'done', content: string } }
-
 export async function getGroupReport(group, periodId) {
   const all = await loadAll()
   const rec = all.find(r => r.recordType === 'okr_report' && r.group === group && r.typeKey === periodId)
@@ -142,7 +82,6 @@ export async function getGroupReport(group, periodId) {
   try { return JSON.parse(rec.payload) } catch { return {} }
 }
 
-// 返回 { '采购一组': { krId: { status, content } }, ... }
 export async function getAllGroupReports(periodId) {
   if (!periodId) return {}
   const all = await loadAll()
@@ -161,21 +100,16 @@ export async function saveGroupReport(group, periodId, data, byUser) {
   const existing = all.find(r => r.recordType === 'okr_report' && r.group === group && r.typeKey === periodId)
   const fields = { payload, updatedBy: byUser, updatedAt: new Date().toISOString() }
   if (existing) {
-    await req(`/table/${TID}/record?fieldKeyType=name`, {
-      method: 'PATCH',
-      body: JSON.stringify({ records: [{ id: existing._id, fields }] }),
-    })
+    await api.patch('/t/okr/records', { fieldKeyType: 'name', records: [{ id: existing._id, fields }] })
   } else {
-    await req(`/table/${TID}/record?fieldKeyType=name`, {
-      method: 'POST',
-      body: JSON.stringify({ records: [{ fields: { recordType: 'okr_report', typeKey: periodId, group, ...fields } }] }),
+    await api.post('/t/okr/records', {
+      fieldKeyType: 'name',
+      records: [{ fields: { recordType: 'okr_report', typeKey: periodId, group, ...fields } }],
     })
   }
   invalidate()
 }
 
-// ── 全周期报告（用于总览） ──────────────────────────────────────────────────────
-// 返回 { periodId: { group: { krId: { status, content } } } }
 export async function getAllPeriodsReports() {
   const all = await loadAll()
   const result = {}
@@ -189,11 +123,8 @@ export async function getAllPeriodsReports() {
   return result
 }
 
-// ── 填写日志 ───────────────────────────────────────────────────────────────────
-// payload: JSON 数组，每条条目：{ ts, user, periodId, periodLabel, changes: [...] }
-
+// ── 填写日志 ──────────────────────────────────────────────────────────────────
 export async function appendHistory(periodId, group, entry) {
-  if (!TID) return
   const key = `history-${periodId}-${group}`
   const all = await loadAll(true)
   const existing = all.find(r => r.recordType === 'okr_history' && r.typeKey === key)
@@ -205,20 +136,16 @@ export async function appendHistory(periodId, group, entry) {
   const payload = JSON.stringify(entries)
   const fields = { payload, updatedBy: entry.user, updatedAt: new Date().toISOString() }
   if (existing) {
-    await req(`/table/${TID}/record?fieldKeyType=name`, {
-      method: 'PATCH',
-      body: JSON.stringify({ records: [{ id: existing._id, fields }] }),
-    })
+    await api.patch('/t/okr/records', { fieldKeyType: 'name', records: [{ id: existing._id, fields }] })
   } else {
-    await req(`/table/${TID}/record?fieldKeyType=name`, {
-      method: 'POST',
-      body: JSON.stringify({ records: [{ fields: { recordType: 'okr_history', typeKey: key, group, ...fields } }] }),
+    await api.post('/t/okr/records', {
+      fieldKeyType: 'name',
+      records: [{ fields: { recordType: 'okr_history', typeKey: key, group, ...fields } }],
     })
   }
   invalidate()
 }
 
-// 返回所有日志条目（倒序），可按 group / periodId 过滤
 export async function getHistory({ group, periodId } = {}) {
   const all = await loadAll()
   const recs = all.filter(r => {
@@ -232,51 +159,38 @@ export async function getHistory({ group, periodId } = {}) {
     try {
       const parsed = JSON.parse(rec.payload)
       const arr = Array.isArray(parsed) ? parsed : [parsed]
-      // 从 Teable 字段补充 group（向后兼容旧数据）
       entries.push(...arr.map(e => ({ group: rec.group, ...e })))
     } catch {}
   }
   return entries.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''))
 }
 
-// ── 附件上传（同百宝箱模式，上传到 okr_report 记录的 attachment 字段） ────────
-
+// ── 附件上传 ──────────────────────────────────────────────────────────────────
 let _attachFid = null
-
 async function getAttachFid() {
   if (_attachFid) return _attachFid
-  const fields = await req(`/table/${TID}/field`)
+  const fields = await api.get('/t/okr/fields')
   const f = (fields ?? []).find(x => x.name === 'attachment' && x.type === 'attachment')
-  if (!f) {
-    const created = await req(`/table/${TID}/field`, {
-      method: 'POST',
-      body: JSON.stringify({ name: 'attachment', type: 'attachment' }),
-    })
-    _attachFid = created.id
-  } else {
-    _attachFid = f.id
-  }
+  if (!f) throw new Error('OKR 表缺少 attachment 字段,请在 Teable 端先建好')
+  _attachFid = f.id
   return _attachFid
 }
 
-/** 获取（或创建）指定组-周期的 okr_report 记录 ID */
 async function getReportRecordId(group, periodId) {
   const all = await loadAll(true)
   const existing = all.find(r => r.recordType === 'okr_report' && r.group === group && r.typeKey === periodId)
   if (existing) return existing._id
-  const data = await req(`/table/${TID}/record?fieldKeyType=name`, {
-    method: 'POST',
-    body: JSON.stringify({ records: [{ fields: {
+  const data = await api.post('/t/okr/records', {
+    fieldKeyType: 'name',
+    records: [{ fields: {
       recordType: 'okr_report', typeKey: periodId, group,
       payload: '{}', updatedAt: new Date().toISOString(),
-    }}] }),
+    }}],
   })
   invalidate()
-  return data.records?.[0]?.id
+  return data?.records?.[0]?.id
 }
 
-/** 获取某组-周期的所有附件（已按 krId__ 前缀打包）
- *  返回 [{ token, name, displayName, size, mimetype, presignedUrl, krId }] */
 export async function getKRAttachments(group, periodId) {
   const all = await loadAll()
   const rec = all.find(r => r.recordType === 'okr_report' && r.group === group && r.typeKey === periodId)
@@ -289,49 +203,42 @@ export async function getKRAttachments(group, periodId) {
   })
 }
 
-/** 上传一个文件到指定 KR，文件名自动前缀 krId__
- *  成功后返回该组-周期最新附件列表（已解析） */
 export async function uploadKRAttachment(group, periodId, krId, file) {
-  if (!TID) throw new Error('未配置 VITE_TEABLE_OKR_TABLE_ID')
+  if (!isApiConfigured()) throw new Error('API 未配置')
   const [recordId, fieldId] = await Promise.all([
     getReportRecordId(group, periodId),
     getAttachFid(),
   ])
-  const renamedFile = new File([file], `${krId}__${file.name}`, { type: file.type })
+  const renamed = new File([file], `${krId}__${file.name}`, { type: file.type })
   const form = new FormData()
-  form.append('file', renamedFile)
-  const res = await fetch(`${API}/api/table/${TID}/record/${recordId}/${fieldId}/uploadAttachment`, {
+  form.append('file', renamed)
+  const token = getToken()
+  const res = await fetch(`${BASE}/t/okr/records/${recordId}/attachment/${fieldId}`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${TOKEN}` },
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: form,
   })
   if (!res.ok) {
     const b = await res.json().catch(() => ({}))
-    throw new Error(b.message ?? `附件上传失败 ${res.status}`)
+    throw new Error(b.errmsg ?? b.message ?? `附件上传失败 ${res.status}`)
   }
   invalidate()
   return getKRAttachments(group, periodId)
 }
 
-/** 删除指定附件（保留其余 token）
- *  keepTokens: 需要保留的 token 数组 */
 export async function deleteKRAttachment(group, periodId, keepTokens) {
-  if (!TID) return
   const all = await loadAll(true)
   const rec = all.find(r => r.recordType === 'okr_report' && r.group === group && r.typeKey === periodId)
   if (!rec) return
   const fieldId = await getAttachFid()
-  await req(`/table/${TID}/record`, {
-    method: 'PATCH',
-    body: JSON.stringify({
-      records: [{ id: rec._id, fields: { [fieldId]: keepTokens.map(t => ({ token: t })) } }],
-    }),
+  await api.patch('/t/okr/records', {
+    records: [{ id: rec._id, fields: { [fieldId]: keepTokens.map(t => ({ token: t })) } }],
   })
   invalidate()
   return getKRAttachments(group, periodId)
 }
 
-// ── 工具函数 ──────────────────────────────────────────────────────────────────
+// ── 工具 ──────────────────────────────────────────────────────────────────────
 export function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 }
@@ -353,6 +260,6 @@ export function getFiscalYear(date) {
     qk:            `${fy}-${q}`,
     annualKey:     `annual-${fy}`,
     quarterlyKey:  `quarterly-${fy}-${q}`,
-    annualLabel:   `${fy} 年度 OKR（${fy}/3/1 ～ ${fy + 1}/2/28）`,
+    annualLabel:   `${fy} 年度 OKR(${fy}/3/1 ~ ${fy + 1}/2/28)`,
   }
 }

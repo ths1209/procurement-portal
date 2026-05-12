@@ -1,6 +1,4 @@
-const BASE = (import.meta.env.VITE_TEABLE_API_BASE ?? '').replace(/\/$/, '')
-const TOKEN = import.meta.env.VITE_TEABLE_TOKEN ?? ''
-const TID   = import.meta.env.VITE_TEABLE_REVIEWS_TABLE_ID ?? ''
+import { api, isApiConfigured } from './api'
 
 export const F = {
   name:        '项目名称',
@@ -16,23 +14,6 @@ export const F = {
 }
 
 export const CONCLUSION_OPTS = ['通过', '条件通过', '不通过', '待定']
-
-async function req(path, init = {}) {
-  const res = await fetch(`${BASE}/api${path}`, {
-    ...init,
-    headers: {
-      Authorization:  `Bearer ${TOKEN}`,
-      'Content-Type': 'application/json',
-      ...(init.headers ?? {}),
-    },
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.message ?? `请求失败 ${res.status}`)
-  }
-  if (res.status === 204) return null
-  return res.json()
-}
 
 function norm(r) {
   const f = r.fields ?? {}
@@ -51,41 +32,31 @@ function norm(r) {
   }
 }
 
-export function isConfigured() { return !!TID }
+function clean(obj) {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== null && v !== undefined && v !== ''))
+}
+
+export function isConfigured() { return isApiConfigured() }
 
 export async function listReviews() {
-  if (!TID) return []
-  const data = await req(`/table/${TID}/record?take=500&fieldKeyType=name`)
-  return (data.records ?? []).map(norm).sort((a, b) => b.reviewDate.localeCompare(a.reviewDate))
+  const data = await api.get('/t/reviews/records', { take: 500, fieldKeyType: 'name' })
+  return (data?.records ?? []).map(norm).sort((a, b) => b.reviewDate.localeCompare(a.reviewDate))
 }
 
 export async function createReview(fields, addedBy) {
-  if (!TID) throw new Error('未配置百万项目评审数据表')
-  return req(`/table/${TID}/record`, {
-    method: 'POST',
-    body: JSON.stringify({
-      records: [{ fields: { ...clean(fields), [F.addedBy]: addedBy } }],
-      fieldKeyType: 'name',
-    }),
+  return api.post('/t/reviews/records', {
+    fieldKeyType: 'name',
+    records: [{ fields: { ...clean(fields), [F.addedBy]: addedBy } }],
   })
 }
 
 export async function updateReview(recordId, fields) {
-  if (!TID) throw new Error('未配置百万项目评审数据表')
-  return req(`/table/${TID}/record`, {
-    method: 'PATCH',
-    body: JSON.stringify({
-      records: [{ id: recordId, fields: clean(fields) }],
-      fieldKeyType: 'name',
-    }),
+  return api.patch('/t/reviews/records', {
+    fieldKeyType: 'name',
+    records: [{ id: recordId, fields: clean(fields) }],
   })
 }
 
 export async function deleteReview(recordId) {
-  if (!TID) throw new Error('未配置百万项目评审数据表')
-  return req(`/table/${TID}/record/${recordId}`, { method: 'DELETE' })
-}
-
-function clean(obj) {
-  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== null && v !== undefined && v !== ''))
+  return api.del(`/t/reviews/records/${recordId}`)
 }

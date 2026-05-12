@@ -163,7 +163,7 @@ export default function Projects() {
         <div className="text-5xl mb-3">⚙️</div>
         <h3 className="font-semibold mb-2" style={{ color:'var(--text)' }}>项目表未配置</h3>
         <pre className="text-xs p-3 rounded-xl text-left" style={{ background:'var(--surface2)', color:'var(--muted)', border:'1px solid var(--border)' }}>
-{`VITE_TEABLE_PROJECTS_TABLE_ID=tblGO47wMm51IEBRFpq`}
+{`VITE_API_BASE=<后端 FC 地址>`}
         </pre>
       </div>
     </div>

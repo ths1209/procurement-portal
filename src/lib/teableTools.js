@@ -1,61 +1,30 @@
-const API   = (import.meta.env.VITE_TEABLE_API_BASE ?? 'https://app.teable.io').replace(/\/$/, '')
-const TOKEN = import.meta.env.VITE_TEABLE_TOKEN
-const TID   = import.meta.env.VITE_TEABLE_TOOLS_TABLE_ID
+/**
+ * 百宝箱工具表 — 通过后端代理 /t/tools/*。
+ */
+
+import { api, isApiConfigured, getToken } from './api'
+
+const BASE = (import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_SSO_WORKER_BASE ?? '').replace(/\/$/, '')
 
 export const FT = {
   name:       '工具名称',
   icon:       '图标',
   desc:       '描述',
   group:      '分组',
-  attachment: '附件',        // attachment 类型字段，存实际文件
-  fileUrl:    '文件链接',    // 备用：外部链接
+  attachment: '附件',
+  fileUrl:    '文件链接',
   fileName:   '文件名',
   downloads:  '下载量',
   uploadedBy: '上传人',
-  toolType:   '类型',        // 文件工具 | 链接工具 | 数据看板
-  toolUrl:    '工具链接',    // 链接工具/看板的目标URL
-  status:     '审核状态',    // pending | active | rejected
+  toolType:   '类型',
+  toolUrl:    '工具链接',
+  status:     '审核状态',
 }
 
-const FIELD_DEFS = [
-  { name: FT.icon,       type: 'singleLineText' },
-  { name: FT.desc,       type: 'singleLineText' },
-  { name: FT.group,      type: 'singleSelect', options: { choices: [
-    { name: '采购部通用' }, { name: '运营分析组' },
-    { name: '稽核组' },    { name: '支付类合作商管理组' },
-  ]}},
-  { name: FT.attachment, type: 'attachment' },
-  { name: FT.fileUrl,    type: 'singleLineText' },
-  { name: FT.fileName,   type: 'singleLineText' },
-  { name: FT.downloads,  type: 'number', options: { precision: 0 } },
-  { name: FT.uploadedBy, type: 'singleLineText' },
-  { name: FT.toolType,   type: 'singleSelect', options: { choices: [
-    { name: '文件工具' }, { name: '链接工具' }, { name: '数据看板' },
-  ]}},
-  { name: FT.toolUrl,    type: 'singleLineText' },
-  { name: FT.status,     type: 'singleSelect', options: { choices: [
-    { name: 'pending' }, { name: 'active' }, { name: 'rejected' },
-  ]}},
-]
-
-// 缓存附件字段 ID（避免每次上传都查询字段列表）
 let _attachmentFieldId = null
-
-async function req(path, init = {}) {
-  const res = await fetch(`${API}/api${path}`, {
-    ...init,
-    headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json', ...(init.headers ?? {}) },
-  })
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}))
-    throw new Error(b.message ?? `API ${res.status}`)
-  }
-  return res.json()
-}
 
 function normTool(r) {
   const f = r.fields ?? {}
-  // 优先用 attachment 字段里的 presignedUrl，其次用文件链接字段
   const atts = Array.isArray(f[FT.attachment]) ? f[FT.attachment] : []
   const att  = atts[0] ?? null
   return {
@@ -72,7 +41,7 @@ function normTool(r) {
     hasFile:    !!att,
     toolType:   f[FT.toolType]  ?? '文件工具',
     url:        f[FT.toolUrl]   ?? '',
-    status:     f[FT.status]    ?? 'active',   // 旧数据没有此字段时默认 active
+    status:     f[FT.status]    ?? 'active',
   }
 }
 
@@ -80,48 +49,28 @@ function clean(fields) {
   return Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== null && v !== undefined && v !== ''))
 }
 
-export const isToolsConfigured = () => !!(TID && TOKEN)
+export const isToolsConfigured = () => isApiConfigured()
 
-export async function ensureToolsFields() {
-  const existing = await req(`/table/${TID}/field`)
-  const existingNames = new Set(existing.map(f => f.name))
-  for (const def of FIELD_DEFS) {
-    if (!existingNames.has(def.name)) {
-      try {
-        await req(`/table/${TID}/field`, { method: 'POST', body: JSON.stringify(def) })
-      } catch (e) {
-        console.warn(`[Teable] 创建字段 "${def.name}" 失败:`, e.message)
-      }
-    }
-  }
-  _attachmentFieldId = null  // 重置缓存
-}
+/** 建字段已移到后端/Teable 端手动配置,前端 no-op */
+export async function ensureToolsFields() { /* no-op */ }
 
 async function getAttachmentFieldId() {
   if (_attachmentFieldId) return _attachmentFieldId
-  const fields = await req(`/table/${TID}/field`)
+  const fields = await api.get('/t/tools/fields')
   const f = fields.find(x => x.name === FT.attachment && x.type === 'attachment')
-  if (!f) {
-    // 自动创建
-    const created = await req(`/table/${TID}/field`, { method: 'POST', body: JSON.stringify({ name: FT.attachment, type: 'attachment' }) })
-    _attachmentFieldId = created.id
-  } else {
-    _attachmentFieldId = f.id
-  }
+  if (!f) throw new Error('tools 表缺少 attachment 字段,请在 Teable 端先建好')
+  _attachmentFieldId = f.id
   return _attachmentFieldId
 }
 
 export async function listFileTools() {
-  if (!TID) return []
-  const data = await req(`/table/${TID}/record?take=500&fieldKeyType=name`)
-  return (data.records ?? []).map(normTool).filter(t => !t.toolType || t.toolType === '文件工具')
+  const data = await api.get('/t/tools/records', { take: 500, fieldKeyType: 'name' })
+  return (data?.records ?? []).map(normTool).filter(t => !t.toolType || t.toolType === '文件工具')
 }
 
-/** 一次性拉取所有类型工具，按类型分组返回（只含 active） */
 export async function listAllTools() {
-  if (!TID) return { fileTools: [], urlTools: [], dashItems: [] }
-  const data = await req(`/table/${TID}/record?take=500&fieldKeyType=name`)
-  const all = (data.records ?? []).map(normTool)
+  const data = await api.get('/t/tools/records', { take: 500, fieldKeyType: 'name' })
+  const all = (data?.records ?? []).map(normTool)
   const active = all.filter(t => t.status === 'active' || t.status === '')
   return {
     fileTools: active.filter(t => !t.toolType || t.toolType === '文件工具'),
@@ -131,17 +80,13 @@ export async function listAllTools() {
   }
 }
 
-/** 审批工具（管理员） */
 export async function approveTool(recordId, approved) {
-  if (!TID) throw new Error('未配置工具表')
-  await req(`/table/${TID}/record`, {
-    method: 'PATCH',
-    body: JSON.stringify({ records: [{ id: recordId, fields: { [FT.status]: approved ? 'active' : 'rejected' } }] }),
+  await api.patch('/t/tools/records', {
+    records: [{ id: recordId, fields: { [FT.status]: approved ? 'active' : 'rejected' } }],
   })
 }
 
 export async function createUrlTool({ name, icon, desc, group, url }, addedBy) {
-  if (!TID) throw new Error('未配置工具表')
   const fields = clean({
     [FT.name]:     name,
     [FT.icon]:     icon  || '🔗',
@@ -152,20 +97,11 @@ export async function createUrlTool({ name, icon, desc, group, url }, addedBy) {
     [FT.uploadedBy]: addedBy || '',
     [FT.status]:   'pending',
   })
-  let data
-  try {
-    data = await req(`/table/${TID}/record`, { method: 'POST', body: JSON.stringify({ fieldKeyType: 'name', typecast: true, records: [{ fields }] }) })
-  } catch (e) {
-    if (e.message?.includes('not found')) {
-      await ensureToolsFields()
-      data = await req(`/table/${TID}/record`, { method: 'POST', body: JSON.stringify({ fieldKeyType: 'name', typecast: true, records: [{ fields }] }) })
-    } else { throw e }
-  }
-  return normTool(data.records?.[0])
+  const data = await api.post('/t/tools/records', { fieldKeyType: 'name', typecast: true, records: [{ fields }] })
+  return normTool(data?.records?.[0] ?? {})
 }
 
 export async function createDashItem({ name, icon, desc, url }, addedBy) {
-  if (!TID) throw new Error('未配置工具表')
   const fields = clean({
     [FT.name]:     name,
     [FT.icon]:     icon || '📊',
@@ -175,42 +111,30 @@ export async function createDashItem({ name, icon, desc, url }, addedBy) {
     [FT.uploadedBy]: addedBy || '',
     [FT.status]:   'pending',
   })
-  let data
-  try {
-    data = await req(`/table/${TID}/record`, { method: 'POST', body: JSON.stringify({ fieldKeyType: 'name', typecast: true, records: [{ fields }] }) })
-  } catch (e) {
-    if (e.message?.includes('not found')) {
-      await ensureToolsFields()
-      data = await req(`/table/${TID}/record`, { method: 'POST', body: JSON.stringify({ fieldKeyType: 'name', typecast: true, records: [{ fields }] }) })
-    } else { throw e }
-  }
-  return normTool(data.records?.[0])
+  const data = await api.post('/t/tools/records', { fieldKeyType: 'name', typecast: true, records: [{ fields }] })
+  return normTool(data?.records?.[0] ?? {})
 }
 
-/** 上传文件到指定记录的附件字段 */
 async function uploadToRecord(recordId, file) {
   const fieldId = await getAttachmentFieldId()
   const form = new FormData()
   form.append('file', file)
-  const res = await fetch(`${API}/api/table/${TID}/record/${recordId}/${fieldId}/uploadAttachment`, {
+  const token = getToken()
+  const res = await fetch(`${BASE}/t/tools/records/${recordId}/attachment/${fieldId}`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${TOKEN}` },
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: form,
   })
   if (!res.ok) {
     const b = await res.json().catch(() => ({}))
-    throw new Error(b.message ?? `上传失败 ${res.status}`)
+    throw new Error(b.errmsg ?? b.message ?? `上传失败 ${res.status}`)
   }
   const data = await res.json()
-  // 响应是更新后的记录，attachment 字段是数组
   const atts = data.fields?.[fieldId] ?? []
-  return atts[0] ?? null  // { presignedUrl, name, size, mimetype, ... }
+  return atts[0] ?? null
 }
 
-/** 创建文件工具（支持直接上传文件 或 粘贴外链） */
 export async function createFileTool({ name, icon, desc, group, fileUrl, fileName, file }, uploadedBy) {
-  if (!TID) throw new Error('未配置工具表 VITE_TEABLE_TOOLS_TABLE_ID')
-
   const fields = clean({
     [FT.name]:       name,
     [FT.icon]:       icon  || '📎',
@@ -222,20 +146,9 @@ export async function createFileTool({ name, icon, desc, group, fileUrl, fileNam
     [FT.uploadedBy]: uploadedBy || '',
     [FT.status]:     'pending',
   })
+  const data = await api.post('/t/tools/records', { fieldKeyType: 'name', typecast: true, records: [{ fields }] })
+  const tool = normTool(data?.records?.[0] ?? {})
 
-  let data
-  try {
-    data = await req(`/table/${TID}/record`, { method: 'POST', body: JSON.stringify({ fieldKeyType: 'name', typecast: true, records: [{ fields }] }) })
-  } catch (e) {
-    if (e.message?.includes('not found')) {
-      await ensureToolsFields()
-      data = await req(`/table/${TID}/record`, { method: 'POST', body: JSON.stringify({ fieldKeyType: 'name', typecast: true, records: [{ fields }] }) })
-    } else { throw e }
-  }
-
-  const tool = normTool(data.records?.[0])
-
-  // 如果传入了 file 对象，上传到 Teable 附件字段
   if (file) {
     try {
       const att = await uploadToRecord(tool._id, file)
@@ -246,7 +159,7 @@ export async function createFileTool({ name, icon, desc, group, fileUrl, fileNam
         tool.hasFile  = true
       }
     } catch (e) {
-      console.warn('[Teable] 附件上传失败，已保存记录（无附件）:', e.message)
+      console.warn('[tools] 附件上传失败,已保存记录(无附件):', e.message)
     }
   }
 
@@ -254,18 +167,15 @@ export async function createFileTool({ name, icon, desc, group, fileUrl, fileNam
 }
 
 export async function deleteFileTool(recordId) {
-  if (!TID) throw new Error('未配置工具表')
-  await req(`/table/${TID}/record/${recordId}`, { method: 'DELETE' })
+  await api.del(`/t/tools/records/${recordId}`)
 }
 
 export async function trackDownload(recordId, currentDownloads) {
-  if (!TID) return
   try {
-    await req(`/table/${TID}/record`, {
-      method: 'PATCH',
-      body: JSON.stringify({ records: [{ id: recordId, fields: { [FT.downloads]: (currentDownloads || 0) + 1 } }] }),
+    await api.patch('/t/tools/records', {
+      records: [{ id: recordId, fields: { [FT.downloads]: (currentDownloads || 0) + 1 } }],
     })
   } catch (e) {
-    console.warn('[Teable] 更新下载量失败:', e.message)
+    console.warn('[tools] 更新下载量失败:', e.message)
   }
 }

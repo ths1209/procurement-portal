@@ -1,11 +1,9 @@
-const BASE = (import.meta.env.VITE_TEABLE_API_BASE ?? '').replace(/\/$/, '')
-const TOKEN = import.meta.env.VITE_TEABLE_TOKEN ?? ''
-const TID   = import.meta.env.VITE_TEABLE_CONSULTING_TABLE_ID ?? ''
+import { api, isApiConfigured } from './api'
 
 export const C = {
   seq:        '序号',
-  question:   '咨询和受理问题（Question）',
-  answer:     '咨询建议和反馈（Answer）',
+  question:   '咨询和受理问题(Question)',
+  answer:     '咨询建议和反馈(Answer)',
   qType:      '问题类型',
   qStage:     '问题阶段',
   contact:    '对接人',
@@ -68,23 +66,6 @@ export const Q_TYPE_CFG = {
   '数据咨询':         { color: '#06B6D4', bg: 'rgba(6,182,212,0.1)'   },
 }
 
-async function req(path, init = {}) {
-  const res = await fetch(`${BASE}/api${path}`, {
-    ...init,
-    headers: {
-      Authorization:  `Bearer ${TOKEN}`,
-      'Content-Type': 'application/json',
-      ...(init.headers ?? {}),
-    },
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.message ?? `请求失败 ${res.status}`)
-  }
-  if (res.status === 204) return null
-  return res.json()
-}
-
 function norm(r) {
   const f = r.fields ?? {}
   return {
@@ -105,16 +86,19 @@ function norm(r) {
   }
 }
 
-export function isConfigured() { return !!TID }
+function clean(obj) {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== null && v !== undefined && v !== ''))
+}
+
+export function isConfigured() { return isApiConfigured() }
 
 export async function listConsulting() {
-  if (!TID) return []
   const PAGE = 500
   let skip = 0
   let all = []
   while (true) {
-    const data = await req(`/table/${TID}/record?take=${PAGE}&skip=${skip}&fieldKeyType=name`)
-    const records = data.records ?? []
+    const data = await api.get('/t/consulting/records', { take: PAGE, skip, fieldKeyType: 'name' })
+    const records = data?.records ?? []
     all = all.concat(records.map(norm))
     if (records.length < PAGE) break
     skip += PAGE
@@ -123,32 +107,19 @@ export async function listConsulting() {
 }
 
 export async function createRecord(fields) {
-  if (!TID) throw new Error('未配置咨询赋能台账数据表')
-  return req(`/table/${TID}/record`, {
-    method: 'POST',
-    body: JSON.stringify({
-      records: [{ fields: clean(fields) }],
-      fieldKeyType: 'name',
-    }),
+  return api.post('/t/consulting/records', {
+    fieldKeyType: 'name',
+    records: [{ fields: clean(fields) }],
   })
 }
 
 export async function updateRecord(recordId, fields) {
-  if (!TID) throw new Error('未配置咨询赋能台账数据表')
-  return req(`/table/${TID}/record`, {
-    method: 'PATCH',
-    body: JSON.stringify({
-      records: [{ id: recordId, fields: clean(fields) }],
-      fieldKeyType: 'name',
-    }),
+  return api.patch('/t/consulting/records', {
+    fieldKeyType: 'name',
+    records: [{ id: recordId, fields: clean(fields) }],
   })
 }
 
 export async function deleteRecord(recordId) {
-  if (!TID) throw new Error('未配置咨询赋能台账数据表')
-  return req(`/table/${TID}/record/${recordId}`, { method: 'DELETE' })
-}
-
-function clean(obj) {
-  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== null && v !== undefined && v !== ''))
+  return api.del(`/t/consulting/records/${recordId}`)
 }

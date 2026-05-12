@@ -1,132 +1,108 @@
 import { createContext, useContext, useEffect, useState } from 'react'
-import bcrypt from 'bcryptjs'
-import { findUserByEmail, createUser, updateUser, upsertSsoUser } from '../lib/teable'
-
-const SESSION_KEY = 'pp_session'  // 存 { email } 到 localStorage
+import { api, setToken, clearToken, getToken } from '../lib/api'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [user, setUser]       = useState(null)   // 当前用户（来自 Teable 记录）
+  const [user, setUser]       = useState(null)
   const [loading, setLoading] = useState(true)
 
-  // 应用启动时：从 localStorage 恢复会话，并重新验证当前状态
   useEffect(() => {
     restoreSession()
+    // 401 时全局广播,自动登出
+    const onUnauth = () => setUser(null)
+    window.addEventListener('pp:unauthorized', onUnauth)
+    return () => window.removeEventListener('pp:unauthorized', onUnauth)
   }, [])
 
   async function restoreSession() {
-    const raw = localStorage.getItem(SESSION_KEY)
-    if (!raw) {
-      setLoading(false)
-      return
-    }
+    if (!getToken()) { setLoading(false); return }
     try {
-      const { email } = JSON.parse(raw)
-      // 重新从 Teable 拉取，确保 status/role 是最新的
-      const current = await findUserByEmail(email)
-      if (current && current.status !== 'disabled') {
-        setUser(current)
-      } else {
-        localStorage.removeItem(SESSION_KEY)
-      }
+      const { profile, token } = await api.get('/auth/me')
+      if (token) setToken(token) // 后端按需续期
+      if (profile && profile.status !== 'disabled') setUser(profile)
+      else clearToken()
     } catch {
-      localStorage.removeItem(SESSION_KEY)
+      clearToken()
     }
     setLoading(false)
   }
 
   async function login(email, password) {
-    const record = await findUserByEmail(email)
-    if (!record) {
-      throw new Error('USER_NOT_FOUND')
+    try {
+      const { token, profile } = await api.post('/auth/login', { email, password })
+      setToken(token)
+      setUser(profile)
+      return profile
+    } catch (e) {
+      // 映射后端 errmsg → 原有错误码,保持页面错误处理不变
+      const msg = String(e?.message || '')
+      if (e?.status === 401) {
+        // 后端统一返回"账号或密码错误",细分原语义前端已不需要
+        throw new Error('WRONG_PASSWORD')
+      }
+      if (e?.status === 403) throw new Error('USER_DISABLED')
+      throw new Error(msg || 'LOGIN_FAILED')
     }
-    const match = await bcrypt.compare(password, record.passwordHash ?? '')
-    if (!match) {
-      throw new Error('WRONG_PASSWORD')
-    }
-    localStorage.setItem(SESSION_KEY, JSON.stringify({ email: record.email }))
-    setUser(record)
-    return record
   }
 
   async function register(email, password, displayName, extra = {}) {
-    const existing = await findUserByEmail(email)
-    if (existing) {
-      throw new Error('EMAIL_EXISTS')
+    try {
+      await api.post('/auth/register', { email, password, displayName, ...extra })
+    } catch (e) {
+      if (e?.status === 409) throw new Error('EMAIL_EXISTS')
+      throw e
     }
-    const passwordHash = await bcrypt.hash(password, 10)
-    const fields = {
-      email,
-      displayName,
-      passwordHash,
-      role:      'member',
-      status:    'pending',
-      createdAt: new Date().toISOString(),
-    }
-    if (extra.jobId) fields.jobId = extra.jobId
-    if (extra.dept)  fields.dept  = extra.dept
-    if (extra.group) fields.group = extra.group
-    await createUser(fields)
-    // 注册成功，不自动登录，等待管理员审批
   }
 
-  /** 通用 SSO 登录：拿到 Worker 返回的 user 数据 → upsert Teable → 建 session */
-  async function finalizeSsoSession(workerPath, paramKey, paramValue) {
-    const base = import.meta.env.VITE_SSO_WORKER_BASE
-    if (!base) throw new Error('SSO_NOT_CONFIGURED')
-    const resp = await fetch(`${base}${workerPath}?${paramKey}=${encodeURIComponent(paramValue)}`)
-    const body = await resp.json().catch(() => ({}))
-    if (body.errcode !== 0 || !body.data) {
-      throw new Error(`SSO_VERIFY_FAILED:${body.errmsg ?? 'unknown'}`)
+  async function finalizeSsoSession(field, value) {
+    const body = field === 'code' ? { code: value } : { token: value }
+    try {
+      const { token, profile } = await api.post('/auth/sso-finalize', body)
+      setToken(token)
+      setUser(profile)
+      return profile
+    } catch (e) {
+      if (e?.status === 403) throw new Error('USER_DISABLED')
+      if (e?.status === 401) throw new Error(`SSO_VERIFY_FAILED:${e.message}`)
+      throw new Error(e.message || 'SSO_UPSERT_FAILED')
     }
-    console.log('[SSO] verify response data:', body.data)
-    console.log('[SSO] data keys:', Object.keys(body.data))
-    console.log('[SSO] enrich debug:', body._debug)
-    const record = await upsertSsoUser(body.data)
-    if (!record) throw new Error('SSO_UPSERT_FAILED')
-    if (record.status === 'disabled') throw new Error('USER_DISABLED')
-    localStorage.setItem(SESSION_KEY, JSON.stringify({ email: record.email }))
-    setUser(record)
-    return record
   }
 
-  /** 扫码登录：前端 code → Worker /sso/qr-verify → Teable upsert */
-  const ssoLogin      = code  => finalizeSsoSession('/sso/qr-verify', 'code',  code)
-  /** 账密登录：SSO 回跳带的 token → Worker /sso/verify → Teable upsert */
-  const ssoTokenLogin = token => finalizeSsoSession('/sso/verify',    'token', token)
+  const ssoLogin      = code  => finalizeSsoSession('code', code)
+  const ssoTokenLogin = token => finalizeSsoSession('token', token)
 
-  function logout() {
-    localStorage.removeItem(SESSION_KEY)
+  async function logout() {
+    try { await api.post('/auth/logout', {}) } catch { /* 无状态,忽略 */ }
+    clearToken()
     setUser(null)
   }
 
   async function changePassword(currentPassword, newPassword) {
-    if (!user?.email) throw new Error('未登录')
-    const record = await findUserByEmail(user.email)
-    if (!record) throw new Error('用户不存在')
-    const match = await bcrypt.compare(currentPassword, record.passwordHash ?? '')
-    if (!match) throw new Error('当前密码错误')
-    const newHash = await bcrypt.hash(newPassword, 10)
-    await updateUser(record.uid, { passwordHash: newHash })
+    if (!user) throw new Error('未登录')
+    try {
+      await api.post('/auth/change-password', { currentPassword, newPassword })
+    } catch (e) {
+      if (e?.status === 401) throw new Error('当前密码错误')
+      throw e
+    }
   }
 
-  // 手动刷新当前用户状态（ProtectedRoute 可调用）
   async function refreshUser() {
-    if (!user?.email) return
-    const current = await findUserByEmail(user.email)
-    if (current) setUser(current)
-    else logout()
+    if (!getToken()) return
+    try {
+      const { profile, token } = await api.get('/auth/me')
+      if (token) setToken(token)
+      if (profile) setUser(profile)
+      else logout()
+    } catch {
+      logout()
+    }
   }
 
-  // profile 与 user 保持一致，兼容原有组件引用
   const value = { user, profile: user, loading, login, register, ssoLogin, ssoTokenLogin, logout, refreshUser, changePassword }
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  )
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

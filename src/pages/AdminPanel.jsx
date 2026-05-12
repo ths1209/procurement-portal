@@ -194,6 +194,29 @@ function AnalyticsSection({ data, loading }) {
     setRange({ start, end })
   }
 
+  // 趋势图数据:日期筛选生效时按区间生成,否则使用默认 30 天
+  const displayTrend = useMemo(() => {
+    if (!customStats || !data?.byDate) return data?.trend ?? []
+    const [s, e] = range.start <= range.end ? [range.start, range.end] : [range.end, range.start]
+    const out = []
+    const startT = new Date(s).getTime()
+    const endT = new Date(e).getTime()
+    for (let t = startT; t <= endT; t += 86400000) {
+      const d = new Date(t).toISOString().slice(0, 10)
+      const v = data.byDate[d]
+      out.push({
+        date: d,
+        label: `${+d.slice(5, 7)}/${+d.slice(8, 10)}`,
+        pv: v?.pv ?? 0,
+        uv: v?.uids?.length ?? 0,
+      })
+    }
+    return out
+  }, [customStats, data, range])
+
+  // X 轴标签间隔:点数 ≤ 10 全部显示,否则稀释
+  const xInterval = displayTrend.length <= 10 ? 0 : Math.ceil(displayTrend.length / 8) - 1
+
   return (
     <div className="space-y-3">
       {/* 标题 + 日期筛选器 */}
@@ -206,7 +229,9 @@ function AnalyticsSection({ data, loading }) {
           </div>
           <div>
             <h3 className="font-semibold text-[14px] leading-none" style={{ color: 'var(--text)' }}>访问统计</h3>
-            <p className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>网站 PV / UV 趋势 · 近 30 天</p>
+            <p className="text-[11px] mt-1" style={{ color: 'var(--muted)' }}>
+              {customStats ? `网站 PV / UV 趋势 · ${range.start} ~ ${range.end}` : '网站 PV / UV 趋势 · 近 30 天'}
+            </p>
           </div>
         </div>
 
@@ -284,12 +309,14 @@ function AnalyticsSection({ data, loading }) {
 
           {/* PV/UV 趋势折线图 */}
           <div className="card p-5">
-            <p className="text-[12px] font-semibold mb-4" style={{ color: 'var(--text)' }}>近 30 天访问趋势</p>
+            <p className="text-[12px] font-semibold mb-4" style={{ color: 'var(--text)' }}>
+              {customStats ? `${customStats.days} 天访问趋势` : '近 30 天访问趋势'}
+            </p>
             <ResponsiveContainer width="100%" height={160}>
-              <LineChart data={data?.trend ?? []} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+              <LineChart data={displayTrend} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                 <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--muted)' }} tickLine={false} axisLine={false}
-                  interval={4} />
+                  interval={xInterval} />
                 <YAxis yAxisId="left" tick={{ fontSize: 10, fill: '#6366F1' }} tickLine={false} axisLine={false} allowDecimals={false} />
                 <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: '#10B981' }} tickLine={false} axisLine={false} allowDecimals={false} />
                 <Tooltip

@@ -347,6 +347,7 @@ function FilterSelect({ value, onChange, options, placeholder }) {
 /* ── 表格列 ── */
 const COLS = [
   { key: 'question',   label: '咨询问题',  w: '1fr',    sort: false },
+  { key: 'answer',     label: '回复信息',  w: '1fr',    sort: false },
   { key: 'qType',      label: '问题类型',  w: '8rem',   sort: true  },
   { key: 'qStage',     label: '问题阶段',  w: '7.5rem', sort: true  },
   { key: 'contact',    label: '对接人',    w: '4.5rem', sort: true  },
@@ -1350,6 +1351,7 @@ export default function Consulting() {
             }}
             onClick={() => setView(row)}>
             <span className="text-xs truncate pr-1" style={{ color: 'var(--text)', minWidth: 0 }}>{row.question}</span>
+            <span className="text-xs truncate pr-1" style={{ color: 'var(--muted)', minWidth: 0 }}>{row.answer || '—'}</span>
             <span style={{ minWidth: 0 }}><TypeBadge type={row.qType} /></span>
             <span className="text-xs truncate" style={{ color: 'var(--muted)', minWidth: 0 }}>{row.qStage || '—'}</span>
             <span className="text-xs truncate" style={{ color: 'var(--muted)', minWidth: 0 }}>{row.contact || '—'}</span>

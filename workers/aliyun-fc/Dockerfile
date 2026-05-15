@@ -5,7 +5,7 @@
 #   ALLOW_ORIGINS  允许的前端源,逗号分隔
 #   PORT           监听端口(默认 9000,无需手动设)
 
-FROM hub.tal.com/standard/node:18-alpine
+FROM hub.tal.com/standard/node:18
 WORKDIR /app
 
 COPY package*.json ./

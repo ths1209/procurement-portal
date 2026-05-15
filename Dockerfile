@@ -6,7 +6,7 @@
 #   VITE_OPENROUTER_KEY / VITE_OPENROUTER_MODEL
 #   VITE_GITHUB_TOKEN / VITE_GITHUB_REPO / VITE_SHUHUAN_WEBHOOK
 
-FROM node:20-alpine AS builder
+FROM hub.tal.com/standard/node:20-alpine AS builder
 WORKDIR /app
 
 COPY package*.json ./
@@ -60,7 +60,7 @@ ENV VITE_TEABLE_API_BASE=$VITE_TEABLE_API_BASE \
 
 RUN npm run build
 
-FROM nginx:alpine
+FROM hub.tal.com/standard/nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80

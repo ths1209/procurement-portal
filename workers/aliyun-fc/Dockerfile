@@ -1,4 +1,5 @@
 # SSO Worker 镜像:Node 18 直接跑 index.js
+# 注意:未来云构建上下文 = 仓库根目录,所以 COPY 路径要从根写起
 # 环境变量(在未来云「应用管理」配置,不要写死在镜像里):
 #   APP_ID         100tal SSO appid
 #   APP_KEY        100tal SSO appkey
@@ -8,10 +9,10 @@
 FROM hub.tal.com/standard/node:18
 WORKDIR /app
 
-COPY package*.json ./
+COPY workers/aliyun-fc/package*.json ./
 RUN npm install --omit=dev
 
-COPY . .
+COPY workers/aliyun-fc/ ./
 
 ENV PORT=9000
 EXPOSE 9000

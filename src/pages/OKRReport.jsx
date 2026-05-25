@@ -53,6 +53,14 @@ const STATUS_CFG = {
   empty:    { label: '未填报', solid: 'rgba(100,116,139,0.1)', text: '#94A3B8' },
 }
 
+// 派生状态：未显式设置但已有进展内容时，回落为"进行中"
+function effectiveStatus(rep) {
+  if (!rep) return 'empty'
+  if (rep.status) return rep.status
+  if (rep.content) return 'progress'
+  return 'empty'
+}
+
 function StatusBadge({ status, size = 'sm' }) {
   const cfg = STATUS_CFG[status] ?? STATUS_CFG.empty
   const cls = size === 'xs'
@@ -662,7 +670,7 @@ function KRSection({ kr, ki, filteredPeriods, allReports, historyEntries, histor
                       </td>
                       {OKR_GROUPS.map(g => {
                         const rep    = allReports[period.id]?.[g]?.[kr.id]
-                        const status = rep?.status || 'empty'
+                        const status = effectiveStatus(rep)
                         const content = rep?.content || ''
                         return (
                           <td key={g} className="py-1.5 px-1 text-center align-middle">
@@ -686,7 +694,7 @@ function KRSection({ kr, ki, filteredPeriods, allReports, historyEntries, histor
                           <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${OKR_GROUPS.length}, 1fr)` }}>
                             {OKR_GROUPS.map(g => {
                               const rep    = allReports[period.id]?.[g]?.[kr.id]
-                              const status = rep?.status || 'empty'
+                              const status = effectiveStatus(rep)
                               return (
                                 <div key={g} className="rounded-lg p-2.5"
                                   style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
@@ -766,7 +774,7 @@ function KRSection({ kr, ki, filteredPeriods, allReports, historyEntries, histor
 // ── 单元格详情 Modal ─────────────────────────────────────────────────────────
 function CellDetailModal({ periodId, group, kr, periodLabel, allReports, onClose }) {
   const rep    = allReports[periodId]?.[group]?.[kr.id]
-  const status = rep?.status || 'empty'
+  const status = effectiveStatus(rep)
   const [entries,    setEntries]    = useState(null)
   const [detailAtts, setDetailAtts] = useState(null)
 
@@ -946,7 +954,13 @@ function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPer
   }, [annualOkr, quarterlyOkr])
 
   function update(krId, field, value) {
-    setDraft(prev => ({ ...prev, [krId]: { ...prev[krId], [field]: value } }))
+    setDraft(prev => {
+      const cur = prev[krId] || {}
+      const next = { ...cur, [field]: value }
+      // 填写进展内容但未选状态时，默认为"进行中"
+      if (field === 'content' && value && !cur.status) next.status = 'progress'
+      return { ...prev, [krId]: next }
+    })
   }
 
   async function handleSave(newSubmitStatus) {

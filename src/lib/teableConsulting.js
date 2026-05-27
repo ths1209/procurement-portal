@@ -122,8 +122,31 @@ export async function listConsulting() {
   return all.sort((a, b) => b.acceptDate.localeCompare(a.acceptDate))
 }
 
+/** 确保单选字段包含给定选项，缺失则 PATCH 字段追加；非单选字段静默跳过 */
+async function ensureSelectOption(fieldName, value) {
+  if (!TID || !value) return
+  const fields = await req(`/table/${TID}/field`)
+  const fld = fields.find(f => f.name === fieldName)
+  if (!fld || fld.type !== 'singleSelect') return
+  const choices = fld.options?.choices ?? []
+  if (choices.some(c => c.name === value)) return
+  await req(`/table/${TID}/field/${fld.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ options: { choices: [...choices, { name: value }] } }),
+  })
+}
+
+/** 在写入前给问题类型 / 问题阶段补全选项，避免 Teable 单选字段拒绝未知值 */
+async function ensureCreatableOptions(fields) {
+  await Promise.all([
+    ensureSelectOption(C.qType,  fields[C.qType]),
+    ensureSelectOption(C.qStage, fields[C.qStage]),
+  ])
+}
+
 export async function createRecord(fields) {
   if (!TID) throw new Error('未配置咨询赋能台账数据表')
+  await ensureCreatableOptions(fields)
   return req(`/table/${TID}/record`, {
     method: 'POST',
     body: JSON.stringify({
@@ -135,6 +158,7 @@ export async function createRecord(fields) {
 
 export async function updateRecord(recordId, fields) {
   if (!TID) throw new Error('未配置咨询赋能台账数据表')
+  await ensureCreatableOptions(fields)
   return req(`/table/${TID}/record`, {
     method: 'PATCH',
     body: JSON.stringify({

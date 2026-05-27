@@ -25,8 +25,9 @@ export default function Layout({ children }) {
   const location  = useLocation()
   const [open, setOpen] = useState(false)
   const [pwOpen, setPwOpen] = useState(false)
-  const isAdmin   = profile?.role === 'admin'
-  const isOps     = isAdmin || profile?.dept === '采购运营组'
+  const isAdmin     = profile?.role === 'admin'
+  const isHrPartner = profile?.role === 'hr_partner'
+  const isOps       = isAdmin || profile?.dept === '采购运营组'
 
   function handleLogout() { logout(); navigate('/login', { replace: true }) }
 
@@ -37,13 +38,15 @@ export default function Layout({ children }) {
   }, [location.pathname, profile?.email])
 
   const isGroupPurchase = !isAdmin && profile?.dept === '集团采购部'
-  const isOKR = isAdmin || !!profile?.okrGroup
-  const links = NAV.filter(n =>
-    (!n.admin || isAdmin) &&
-    (!n.opsOnly || isOps) &&
-    (!n.okrOnly || isOKR) &&
-    (!n.hideGroupPurchase || !isGroupPurchase)
-  )
+  const isOKR = isAdmin || isHrPartner || !!profile?.okrGroup
+  const links = isHrPartner
+    ? NAV.filter(n => n.to === '/okr-report')
+    : NAV.filter(n =>
+        (!n.admin || isAdmin) &&
+        (!n.opsOnly || isOps) &&
+        (!n.okrOnly || isOKR) &&
+        (!n.hideGroupPurchase || !isGroupPurchase)
+      )
 
   /* ── 侧边栏内容 ── */
   const Sidebar = () => (

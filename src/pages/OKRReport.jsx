@@ -118,10 +118,11 @@ function buildChangeDiff(oldData, newData, allKRs) {
 // ── 权限 hook ──────────────────────────────────────────────────────────────────
 function useOKRAuth() {
   const { profile } = useAuth()
-  const isAdmin   = profile?.role === 'admin'
-  const myGroup   = profile?.okrGroup || ''
-  const canAccess = isAdmin || !!myGroup
-  return { isAdmin, myGroup, canAccess, profile }
+  const isAdmin     = profile?.role === 'admin'
+  const isHrPartner = profile?.role === 'hr_partner'
+  const myGroup     = profile?.okrGroup || ''
+  const canAccess   = isAdmin || isHrPartner || !!myGroup
+  return { isAdmin, isHrPartner, myGroup, canAccess, profile }
 }
 
 // ── 主页面 ─────────────────────────────────────────────────────────────────────

@@ -1,8 +1,9 @@
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function ProtectedRoute({ children, requireAdmin = false, requireOps = false }) {
   const { user, profile, loading, logout } = useAuth()
+  const location = useLocation()
 
   if (loading) {
     return (
@@ -53,6 +54,11 @@ export default function ProtectedRoute({ children, requireAdmin = false, require
         </div>
       </div>
     )
+  }
+
+  // 人力伙伴：除 OKR 进度外所有页面强制跳回
+  if (profile?.role === 'hr_partner' && location.pathname !== '/okr-report') {
+    return <Navigate to="/okr-report" replace />
   }
 
   if (requireAdmin && profile?.role !== 'admin') {

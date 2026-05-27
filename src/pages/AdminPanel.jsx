@@ -462,6 +462,7 @@ function UserRow({ user: u, isSelf, actionLoading, onStatusChange, onRoleChange,
           <select value={u.role||'member'} onChange={e => onRoleChange(u.uid, e.target.value)}
             disabled={busy} className="field text-xs py-1.5 px-2.5" style={{ width:'auto' }}>
             <option value="member">普通成员</option>
+            <option value="hr_partner">人力伙伴</option>
             <option value="admin">管理员</option>
           </select>
         )}

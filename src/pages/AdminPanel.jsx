@@ -362,7 +362,7 @@ function AnalyticsSection({ data, loading }) {
   )
 }
 
-const DEPT_OPTS      = ['', '采购运营组', '集团采购部']
+const DEPT_OPTS      = ['', '采购运营组', '集团采购部', '人力伙伴']
 const GROUP_OPTS     = ['', '运营分析组', '采购稽核组', '供应商管理组']
 const OKR_GROUP_OPTS = ['采购一组', '采购二组', '采购三组', '采购四组', '采购运营组']
 const DEPT_CFG = {
@@ -462,7 +462,6 @@ function UserRow({ user: u, isSelf, actionLoading, onStatusChange, onRoleChange,
           <select value={u.role||'member'} onChange={e => onRoleChange(u.uid, e.target.value)}
             disabled={busy} className="field text-xs py-1.5 px-2.5" style={{ width:'auto' }}>
             <option value="member">普通成员</option>
-            <option value="hr_partner">人力伙伴</option>
             <option value="admin">管理员</option>
           </select>
         )}

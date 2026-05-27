@@ -68,18 +68,15 @@ export function isGroupPurchase(profile) {
   return profile?.role !== 'admin' && profile?.dept === '集团采购部'
 }
 
-/** 权限辅助：人力伙伴角色，仅可查看 OKR 模块 */
+/** 权限辅助：人力伙伴部门，仅可查看 OKR 模块 */
 export function isHrPartner(profile) {
-  return profile?.role === 'hr_partner'
+  return profile?.role !== 'admin' && profile?.dept === '人力伙伴'
 }
 
 /** 确保用户表存在 dept / group / jobId 字段，不存在则自动创建 */
 const USER_EXTRA_FIELDS = [
-  { name: 'role',  type: 'singleSelect', options: { choices: [
-    { name: 'admin' }, { name: 'member' }, { name: 'hr_partner' },
-  ]}},
   { name: 'dept',  type: 'singleSelect', options: { choices: [
-    { name: '采购运营组' }, { name: '集团采购部' },
+    { name: '采购运营组' }, { name: '集团采购部' }, { name: '人力伙伴' },
   ]}},
   { name: 'group', type: 'singleSelect', options: { choices: [
     { name: '运营分析组' }, { name: '采购稽核组' }, { name: '供应商管理组' },

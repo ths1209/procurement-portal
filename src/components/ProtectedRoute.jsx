@@ -56,8 +56,8 @@ export default function ProtectedRoute({ children, requireAdmin = false, require
     )
   }
 
-  // 人力伙伴：除 OKR 进度外所有页面强制跳回
-  if (profile?.role === 'hr_partner' && location.pathname !== '/okr-report') {
+  // 人力伙伴部门：除 OKR 进度外所有页面强制跳回
+  if (profile?.role !== 'admin' && profile?.dept === '人力伙伴' && location.pathname !== '/okr-report') {
     return <Navigate to="/okr-report" replace />
   }
 

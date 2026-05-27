@@ -119,7 +119,7 @@ function buildChangeDiff(oldData, newData, allKRs) {
 function useOKRAuth() {
   const { profile } = useAuth()
   const isAdmin     = profile?.role === 'admin'
-  const isHrPartner = profile?.role === 'hr_partner'
+  const isHrPartner = !isAdmin && profile?.dept === '人力伙伴'
   const myGroup     = profile?.okrGroup || ''
   const canAccess   = isAdmin || isHrPartner || !!myGroup
   return { isAdmin, isHrPartner, myGroup, canAccess, profile }

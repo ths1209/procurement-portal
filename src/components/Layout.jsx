@@ -26,7 +26,7 @@ export default function Layout({ children }) {
   const [open, setOpen] = useState(false)
   const [pwOpen, setPwOpen] = useState(false)
   const isAdmin     = profile?.role === 'admin'
-  const isHrPartner = profile?.role === 'hr_partner'
+  const isHrPartner = !isAdmin && profile?.dept === '人力伙伴'
   const isOps       = isAdmin || profile?.dept === '采购运营组'
 
   function handleLogout() { logout(); navigate('/login', { replace: true }) }

@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { Plus, ExternalLink, Eye, X, BarChart3, Package, Download, Upload, Layers, BarChart2, ShieldCheck, CreditCard } from 'lucide-react'
+import { Plus, ExternalLink, Eye, X, BarChart3, Package, Download, Upload, Layers, BarChart2, ShieldCheck, CreditCard, Pencil } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
-import { listAllTools, createFileTool, createUrlTool, createDashItem, deleteFileTool, trackDownload, approveTool, isToolsConfigured } from '../lib/teableTools'
+import { listAllTools, createFileTool, createUrlTool, createDashItem, deleteFileTool, trackDownload, approveTool, submitEdit, approveEdit, isToolsConfigured } from '../lib/teableTools'
 import { Clock, CheckCircle, XCircle } from 'lucide-react'
 
 const GRADS = ['#6366F1','#0EA5E9','#10B981','#F59E0B','#8B5CF6','#14B8A6','#F97316','#EC4899']
@@ -48,8 +48,9 @@ export default function Dashboard() {
   // localStorage 仅在 Teable 未配置时作为本地回退
   const ai   = useLocal('pp_ai',   DEFAULT_AI)
   const dash = useLocal('pp_dash', DEFAULT_DASH)
-  const [teableData, setTeableData] = useState({ fileTools:[], urlTools:[], dashItems:[], pending:[] })
+  const [teableData, setTeableData] = useState({ fileTools:[], urlTools:[], dashItems:[], pending:[], pendingEdits:[] })
   const [addGroup,    setAddGroup]    = useState(null)
+  const [editing,     setEditing]     = useState(null)   // 当前正在编辑的工具/看板对象
   const [approving,   setApproving]   = useState(null)
   const [activeGroup, setActiveGroup] = useState(null)   // Tab 当前分组
   const [animDir,     setAnimDir]     = useState(1)      // 1=向右滑入 -1=向左滑入
@@ -134,41 +135,30 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* 待审批工具（仅管理员可见） */}
-      {isAdmin && teableData.pending?.length > 0 && (
+      {/* 待审批：新增 + 修改（仅管理员可见） */}
+      {isAdmin && (teableData.pending?.length > 0 || teableData.pendingEdits?.length > 0) && (
         <div className="rounded-2xl overflow-hidden" style={{ border:'1px solid rgba(245,158,11,0.3)', background:'rgba(245,158,11,0.03)' }}>
           <div className="flex items-center gap-2.5 px-4 py-3" style={{ background:'rgba(245,158,11,0.08)', borderBottom:'1px solid rgba(245,158,11,0.15)' }}>
             <Clock className="w-4 h-4 shrink-0" style={{ color:'#B45309' }} />
-            <span className="text-[13px] font-semibold" style={{ color:'#92400E' }}>待审批工具</span>
+            <span className="text-[13px] font-semibold" style={{ color:'#92400E' }}>待审批</span>
             <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold" style={{ background:'rgba(245,158,11,0.2)', color:'#B45309' }}>
-              {teableData.pending.length}
+              {(teableData.pending?.length || 0) + (teableData.pendingEdits?.length || 0)}
             </span>
           </div>
           <div className="divide-y" style={{ divideColor:'rgba(245,158,11,0.1)' }}>
             {teableData.pending.map(t => (
-              <div key={t._id} className="flex items-center gap-3 px-4 py-3">
-                <span className="text-xl shrink-0 w-7 text-center select-none">{t.icon || '📎'}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-medium truncate" style={{ color:'var(--text)' }}>{t.name}</p>
-                  <p className="text-[11px]" style={{ color:'var(--muted)' }}>
-                    {t.toolType} · {t.uploadedBy || '未知'} · {t.group || '—'}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button disabled={approving === t._id}
-                    onClick={async () => { setApproving(t._id); await approveTool(t._id, true); await loadTools(); setApproving(null) }}
-                    className="press flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold disabled:opacity-50"
-                    style={{ background:'rgba(16,185,129,0.1)', color:'#059669', border:'1px solid rgba(16,185,129,0.2)' }}>
-                    <CheckCircle className="w-3 h-3" /> 批准
-                  </button>
-                  <button disabled={approving === t._id}
-                    onClick={async () => { setApproving(t._id); await approveTool(t._id, false); await loadTools(); setApproving(null) }}
-                    className="press flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold disabled:opacity-50"
-                    style={{ background:'rgba(244,63,94,0.08)', color:'#E11D48', border:'1px solid rgba(244,63,94,0.15)' }}>
-                    <XCircle className="w-3 h-3" /> 驳回
-                  </button>
-                </div>
-              </div>
+              <PendingRow key={'new-'+t._id} kind="new" tool={t}
+                approving={approving === t._id}
+                onApprove={async () => { setApproving(t._id); await approveTool(t._id, true);  await loadTools(); setApproving(null) }}
+                onReject={ async () => { setApproving(t._id); await approveTool(t._id, false); await loadTools(); setApproving(null) }}
+              />
+            ))}
+            {teableData.pendingEdits.map(t => (
+              <PendingRow key={'edit-'+t._id} kind="edit" tool={t}
+                approving={approving === t._id}
+                onApprove={async () => { setApproving(t._id); await approveEdit(t._id, true);  await loadTools(); setApproving(null) }}
+                onReject={ async () => { setApproving(t._id); await approveEdit(t._id, false); await loadTools(); setApproving(null) }}
+              />
             ))}
           </div>
         </div>
@@ -221,6 +211,7 @@ export default function Dashboard() {
               onAdd={() => setAddGroup(currentGroup)}
               onDelUrl={id => configured ? handleDelTool(id) : ai.del(id)}
               onDelFile={handleDelTool}
+              onEdit={tool => configured && setEditing(tool)}
               onDownload={handleDownload}
               onUrlClick={tool => bumpUsage('urlTools', tool)}
             />
@@ -234,13 +225,19 @@ export default function Dashboard() {
         icon={<BarChart3 className="w-4 h-4" />} iconBg="rgba(14,165,233,0.12)" iconClr="#0EA5E9"
         onAdd={() => setAddGroup('__dash__')}>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 stagger">
-          {dashItems.map((d, idx) => (
-            <DashCard key={d._id || d.id} item={{ ...d, g: d.g ?? (idx % GRADS.length) }}
-              canDelete={isAdmin || (!!myIdentity && d.uploadedBy === myIdentity)}
-              onDel={() => configured ? handleDelTool(d._id) : dash.del(d.id)}
-              onPrev={() => openPreview(d.url || d.fileUrl)}
-              onOpen={() => bumpUsage('dashItems', d)} />
-          ))}
+          {dashItems.map((d, idx) => {
+            const mine = !!myIdentity && d.uploadedBy === myIdentity
+            return (
+              <DashCard key={d._id || d.id} item={{ ...d, g: d.g ?? (idx % GRADS.length) }}
+                canDelete={isAdmin || mine}
+                canEdit={configured && (isAdmin || mine)}
+                pendingEdit={!!d.pendingEdit}
+                onEdit={() => setEditing(d)}
+                onDel={() => configured ? handleDelTool(d._id) : dash.del(d.id)}
+                onPrev={() => openPreview(d.url || d.fileUrl)}
+                onOpen={() => bumpUsage('dashItems', d)} />
+            )
+          })}
           <AddCard label="添加看板" onClick={() => setAddGroup('__dash__')} />
         </div>
       </Section>
@@ -269,6 +266,17 @@ export default function Dashboard() {
             if (configured) { await createDashItem(x, profile?.displayName || profile?.email); await loadTools() }
             else { dash.add({ ...x, g: dash.items.length % GRADS.length }) }
             setAddGroup(null)
+          }} />
+      )}
+
+      {/* 编辑工具/看板弹窗 */}
+      {editing && (
+        <EditToolModal tool={editing} onClose={() => setEditing(null)}
+          onSubmit={async changes => {
+            await submitEdit(editing._id, changes, profile?.displayName || profile?.email)
+            await loadTools()
+            setEditing(null)
+            alert('修改已提交，等待管理员审批后将替换原内容（期间旧版本仍可见）')
           }} />
       )}
 
@@ -306,11 +314,12 @@ function Section({ title, sub, icon, iconBg, iconClr, onAdd, children }) {
 }
 
 // ─── 分组面板 ─────────────────────────────────────────────────────────────────
-function GroupPanel({ group, urlTools, fileTools, isAdmin, myIdentity = '', onAdd, onDelUrl, onDelFile, onDownload, onUrlClick, nameMap = {} }) {
+function GroupPanel({ group, urlTools, fileTools, isAdmin, myIdentity = '', onAdd, onDelUrl, onDelFile, onEdit, onDownload, onUrlClick, nameMap = {} }) {
   const cfg = GROUP_CFG[group] ?? { icon: Layers, color:'#64748B', bg:'rgba(100,116,139,0.07)' }
   const total = urlTools.length + fileTools.length
   const resolveName = v => (v && nameMap[v]) ? nameMap[v] : v
   const canDeleteTool = t => isAdmin || (!!myIdentity && t.uploadedBy === myIdentity)
+  const canEditTool   = t => !!onEdit && t._id && (isAdmin || (!!myIdentity && t.uploadedBy === myIdentity))
 
   return (
     <div style={{ background:`linear-gradient(160deg, ${cfg.color}04 0%, var(--surface) 45%)` }}>
@@ -332,7 +341,9 @@ function GroupPanel({ group, urlTools, fileTools, isAdmin, myIdentity = '', onAd
         {urlTools.map(t => (
           <ToolRow key={t._id || t.id} icon={t.icon} name={t.name} desc={t.desc}
             uploadedBy={resolveName(t.uploadedBy)}
+            pendingEdit={!!t.pendingEdit}
             canDelete={canDeleteTool(t)} onDel={() => onDelUrl(t._id || t.id)}
+            canEdit={canEditTool(t)}     onEdit={() => onEdit?.(t)}
             badge={t.downloads > 0 ? `↗ ${t.downloads}` : null}
             accentColor={cfg.color}
             action={
@@ -349,7 +360,9 @@ function GroupPanel({ group, urlTools, fileTools, isAdmin, myIdentity = '', onAd
           <ToolRow key={t._id} icon={t.icon} name={t.name}
             desc={t.desc || t.fileName}
             uploadedBy={resolveName(t.uploadedBy)}
+            pendingEdit={!!t.pendingEdit}
             canDelete={canDeleteTool(t)} onDel={() => onDelFile(t._id)}
+            canEdit={canEditTool(t)}     onEdit={() => onEdit?.(t)}
             badge={t.downloads > 0 ? `↓ ${t.downloads}` : null}
             accentColor={cfg.color}
             action={
@@ -372,7 +385,7 @@ function GroupPanel({ group, urlTools, fileTools, isAdmin, myIdentity = '', onAd
 }
 
 // ─── 工具行（列表样式）────────────────────────────────────────────────────────
-function ToolRow({ icon, name, desc, canDelete, onDel, action, badge, uploadedBy, accentColor }) {
+function ToolRow({ icon, name, desc, canDelete, onDel, canEdit, onEdit, action, badge, uploadedBy, accentColor, pendingEdit }) {
   return (
     <div className="flex items-center gap-3 px-3.5 py-2.5 group transition-colors"
       style={{ borderBottom:'1px solid var(--border)' }}
@@ -390,12 +403,27 @@ function ToolRow({ icon, name, desc, canDelete, onDel, action, badge, uploadedBy
         {desc && <p className="text-[11px] truncate" style={{ color:'var(--muted)' }}>{desc}</p>}
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
+        {pendingEdit && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+            style={{ background:'rgba(245,158,11,0.12)', color:'#B45309', border:'1px solid rgba(245,158,11,0.25)' }}>
+            修改待审
+          </span>
+        )}
         {badge && <span className="text-[10px] font-medium" style={{ color:'var(--muted)' }}>{badge}</span>}
         {uploadedBy && (
           <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium hidden sm:inline-block"
             style={{ background:'var(--surface2)', color:'var(--muted)', border:'1px solid var(--border)' }}>
             {uploadedBy}
           </span>
+        )}
+        {canEdit && (
+          <button onClick={onEdit} title="修改"
+            className="press w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-indigo-500/10"
+            style={{ color:'var(--muted)' }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#6366F1' }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--muted)' }}>
+            <Pencil className="w-3 h-3" />
+          </button>
         )}
         {canDelete && (
           <button onClick={onDel}
@@ -413,7 +441,7 @@ function ToolRow({ icon, name, desc, canDelete, onDel, action, badge, uploadedBy
 }
 
 // ─── DashCard（方形紧凑）─────────────────────────────────────────────────────
-function DashCard({ item, canDelete, onDel, onPrev, onOpen }) {
+function DashCard({ item, canDelete, canEdit, pendingEdit, onEdit, onDel, onPrev, onOpen }) {
   const clr = GRADS[item.g ?? 4]
   return (
     <div className="group flex flex-col overflow-hidden rounded-2xl transition-all duration-200 hover:-translate-y-0.5"
@@ -435,15 +463,32 @@ function DashCard({ item, canDelete, onDel, onPrev, onOpen }) {
             ↗ {item.downloads}
           </span>
         )}
-        {canDelete && (
-          <button onClick={onDel}
-            className="press absolute top-1.5 right-1.5 w-5 h-5 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-            style={{ background:'rgba(0,0,0,0.06)', color:'var(--muted)' }}
-            onMouseEnter={e => { e.currentTarget.style.background='rgba(244,63,94,0.12)'; e.currentTarget.style.color='#F43F5E' }}
-            onMouseLeave={e => { e.currentTarget.style.background='rgba(0,0,0,0.06)'; e.currentTarget.style.color='var(--muted)' }}>
-            <X className="w-2.5 h-2.5" />
-          </button>
+        {pendingEdit && (
+          <span className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold"
+            style={{ background:'rgba(245,158,11,0.12)', color:'#B45309', border:'1px solid rgba(245,158,11,0.25)' }}>
+            修改待审
+          </span>
         )}
+        <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {canEdit && (
+            <button onClick={onEdit} title="修改"
+              className="press w-5 h-5 rounded-lg flex items-center justify-center"
+              style={{ background:'rgba(0,0,0,0.06)', color:'var(--muted)' }}
+              onMouseEnter={e => { e.currentTarget.style.background='rgba(99,102,241,0.12)'; e.currentTarget.style.color='#6366F1' }}
+              onMouseLeave={e => { e.currentTarget.style.background='rgba(0,0,0,0.06)'; e.currentTarget.style.color='var(--muted)' }}>
+              <Pencil className="w-2.5 h-2.5" />
+            </button>
+          )}
+          {canDelete && (
+            <button onClick={onDel}
+              className="press w-5 h-5 rounded-lg flex items-center justify-center"
+              style={{ background:'rgba(0,0,0,0.06)', color:'var(--muted)' }}
+              onMouseEnter={e => { e.currentTarget.style.background='rgba(244,63,94,0.12)'; e.currentTarget.style.color='#F43F5E' }}
+              onMouseLeave={e => { e.currentTarget.style.background='rgba(0,0,0,0.06)'; e.currentTarget.style.color='var(--muted)' }}>
+              <X className="w-2.5 h-2.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 内容区 */}
@@ -654,6 +699,192 @@ function AddDashModal({ onClose, onSave }) {
         </div>
       </form>
     </Modal>
+  )
+}
+
+// ─── 编辑工具/看板弹窗（修改后走待审批，原值不动）────────────────────────────
+const FIELD_LABELS = {
+  name: '名称', icon: '图标', desc: '描述', group: '分组',
+  url: '链接',  fileUrl: '文件链接', fileName: '文件名',
+}
+
+function EditToolModal({ tool, onClose, onSubmit }) {
+  const isUrl  = tool.toolType === '链接工具'
+  const isDash = tool.toolType === '数据看板'
+  const isFile = !tool.toolType || tool.toolType === '文件工具'
+
+  // 编辑基线：优先展示当前 active 值；如果已有 pendingEdit，把它叠加，方便本人在已提交基础上继续微调
+  const merged = { ...tool, ...(tool.pendingEdit || {}) }
+  const [f, setF] = useState({
+    icon:    merged.icon    ?? '',
+    name:    merged.name    ?? '',
+    desc:    merged.desc    ?? '',
+    group:   merged.group   ?? '采购部通用',
+    url:     merged.url     ?? '',
+    fileUrl: merged.fileUrl ?? '',
+    fileName:merged.fileName?? '',
+  })
+  const [saving, setSaving] = useState(false)
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }))
+
+  // 仅提交「相对当前 active 值」的差异
+  function diff() {
+    const out = {}
+    const keys = ['icon','name','desc']
+    if (isUrl)  keys.push('url','group')
+    if (isDash) keys.push('url')
+    if (isFile) keys.push('group','fileUrl','fileName')
+    for (const k of keys) {
+      const cur = tool[k] ?? ''
+      const next = f[k] ?? ''
+      if ((cur || '') !== (next || '')) out[k] = next
+    }
+    return out
+  }
+
+  async function submit(e) {
+    e.preventDefault()
+    const changes = diff()
+    if (Object.keys(changes).length === 0) {
+      alert('未做任何修改')
+      return
+    }
+    setSaving(true)
+    try { await onSubmit(changes) }
+    catch(err) { alert('提交失败：' + (err?.message || err)) }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <Modal title={`修改${isDash ? '看板' : '工具'}`} onClose={onClose}>
+      <form onSubmit={submit} className="p-5 space-y-4">
+        <p className="text-[11px] -mt-2" style={{ color:'var(--muted)' }}>
+          提交后状态变为「修改待审」，旧版本仍正常显示，管理员审批通过后才会替换。
+        </p>
+
+        {!isDash && (
+          <div>
+            <L>所属分组</L>
+            <select value={f.group} onChange={e => set('group', e.target.value)} className="field">
+              {GROUPS.map(g => <option key={g}>{g}</option>)}
+            </select>
+          </div>
+        )}
+
+        <div className="flex gap-3">
+          <div className="w-[68px] shrink-0">
+            <L>图标</L>
+            <input value={f.icon} onChange={e => set('icon', e.target.value)} className="field text-center text-2xl p-2" />
+          </div>
+          <div className="flex-1">
+            <L>名称 *</L>
+            <input value={f.name} onChange={e => set('name', e.target.value)} required className="field" />
+          </div>
+        </div>
+
+        {(isUrl || isDash) && (
+          <div>
+            <L>网址 *</L>
+            <input value={f.url} onChange={e => set('url', e.target.value)} required type="url" className="field" />
+          </div>
+        )}
+
+        {isFile && (
+          <div>
+            <L>文件分享链接</L>
+            <input value={f.fileUrl} onChange={e => set('fileUrl', e.target.value)} type="url" className="field" placeholder="https://..." />
+            <p className="text-[11px] mt-1" style={{ color:'var(--muted)' }}>
+              暂不支持替换附件本身；如需重新上传文件，请删除后重新添加。
+            </p>
+          </div>
+        )}
+
+        <div>
+          <L>描述</L>
+          <input value={f.desc} onChange={e => set('desc', e.target.value)} className="field" />
+        </div>
+
+        <div className="flex gap-2.5 pt-1">
+          <button type="button" onClick={onClose}
+            className="press flex-1 py-2.5 text-sm font-semibold rounded-xl"
+            style={{ background:'var(--surface2)', color:'var(--muted)' }}>取消</button>
+          <button type="submit" disabled={saving}
+            className="press flex-1 py-2.5 text-sm font-semibold text-white rounded-xl disabled:opacity-60"
+            style={{ background:'#6366F1' }}>
+            {saving ? '提交中…' : '提交修改'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+// ─── 待审批行（新增 / 修改两类）──────────────────────────────────────────────
+function PendingRow({ kind, tool, approving, onApprove, onReject }) {
+  const [showDiff, setShowDiff] = useState(false)
+  const isEdit = kind === 'edit'
+  const changes = isEdit ? (tool.pendingEdit || {}) : {}
+  const changedKeys = Object.keys(changes)
+
+  return (
+    <div className="px-4 py-3">
+      <div className="flex items-center gap-3">
+        <span className="text-xl shrink-0 w-7 text-center select-none">{tool.icon || '📎'}</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold shrink-0"
+              style={isEdit
+                ? { background:'rgba(99,102,241,0.1)',  color:'#4F46E5', border:'1px solid rgba(99,102,241,0.2)' }
+                : { background:'rgba(16,185,129,0.1)',  color:'#059669', border:'1px solid rgba(16,185,129,0.2)' }}>
+              {isEdit ? '修改' : '新增'}
+            </span>
+            <p className="text-[13px] font-medium truncate" style={{ color:'var(--text)' }}>{tool.name}</p>
+          </div>
+          <p className="text-[11px] mt-0.5" style={{ color:'var(--muted)' }}>
+            {tool.toolType || '文件工具'} · {(isEdit ? tool.editedBy : tool.uploadedBy) || '未知'} · {tool.group || '—'}
+            {isEdit && changedKeys.length > 0 && (
+              <button type="button" onClick={() => setShowDiff(v => !v)}
+                className="ml-2 underline" style={{ color:'#4F46E5' }}>
+                {showDiff ? '收起改动' : `查看改动（${changedKeys.length}）`}
+              </button>
+            )}
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button disabled={approving} onClick={onApprove}
+            className="press flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold disabled:opacity-50"
+            style={{ background:'rgba(16,185,129,0.1)', color:'#059669', border:'1px solid rgba(16,185,129,0.2)' }}>
+            <CheckCircle className="w-3 h-3" /> 批准
+          </button>
+          <button disabled={approving} onClick={onReject}
+            className="press flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold disabled:opacity-50"
+            style={{ background:'rgba(244,63,94,0.08)', color:'#E11D48', border:'1px solid rgba(244,63,94,0.15)' }}>
+            <XCircle className="w-3 h-3" /> 驳回
+          </button>
+        </div>
+      </div>
+
+      {isEdit && showDiff && changedKeys.length > 0 && (
+        <div className="mt-2 ml-10 rounded-xl p-3 text-[12px] space-y-1.5"
+          style={{ background:'var(--surface2)', border:'1px solid var(--border)' }}>
+          {changedKeys.map(k => (
+            <div key={k} className="grid grid-cols-[80px_1fr] gap-2">
+              <span className="font-semibold" style={{ color:'var(--muted)' }}>{FIELD_LABELS[k] || k}</span>
+              <div className="min-w-0">
+                <div className="flex items-baseline gap-2 truncate">
+                  <span className="text-[10px] shrink-0" style={{ color:'#E11D48' }}>旧</span>
+                  <span className="truncate line-through" style={{ color:'var(--muted)' }}>{String(tool[k] ?? '') || '—'}</span>
+                </div>
+                <div className="flex items-baseline gap-2 truncate">
+                  <span className="text-[10px] shrink-0" style={{ color:'#059669' }}>新</span>
+                  <span className="truncate font-medium" style={{ color:'var(--text)' }}>{String(changes[k] ?? '') || '—'}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 

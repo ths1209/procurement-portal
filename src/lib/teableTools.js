@@ -15,6 +15,8 @@ export const FT = {
   toolType:   '类型',        // 文件工具 | 链接工具 | 数据看板
   toolUrl:    '工具链接',    // 链接工具/看板的目标URL
   status:     '审核状态',    // pending | active | rejected
+  pendingEdit:'待审改动',    // longText：JSON.stringify({ field: newValue, ... })
+  editedBy:   '修改人',      // singleLineText：发起修改的人
 }
 
 const FIELD_DEFS = [
@@ -36,6 +38,8 @@ const FIELD_DEFS = [
   { name: FT.status,     type: 'singleSelect', options: { choices: [
     { name: 'pending' }, { name: 'active' }, { name: 'rejected' },
   ]}},
+  { name: FT.pendingEdit,type: 'longText' },
+  { name: FT.editedBy,   type: 'singleLineText' },
 ]
 
 // 缓存附件字段 ID（避免每次上传都查询字段列表）
@@ -58,6 +62,11 @@ function normTool(r) {
   // 优先用 attachment 字段里的 presignedUrl，其次用文件链接字段
   const atts = Array.isArray(f[FT.attachment]) ? f[FT.attachment] : []
   const att  = atts[0] ?? null
+  let pendingEdit = null
+  const raw = f[FT.pendingEdit]
+  if (raw) {
+    try { pendingEdit = typeof raw === 'string' ? JSON.parse(raw) : raw } catch { pendingEdit = null }
+  }
   return {
     _id:        r.id,
     name:       f[FT.name]       ?? '',
@@ -73,6 +82,8 @@ function normTool(r) {
     toolType:   f[FT.toolType]  ?? '文件工具',
     url:        f[FT.toolUrl]   ?? '',
     status:     f[FT.status]    ?? 'active',   // 旧数据没有此字段时默认 active
+    pendingEdit,                                // null | { name, icon, desc, group, url, fileUrl, fileName }
+    editedBy:   f[FT.editedBy]  ?? '',
   }
 }
 
@@ -117,9 +128,9 @@ export async function listFileTools() {
   return (data.records ?? []).map(normTool).filter(t => !t.toolType || t.toolType === '文件工具')
 }
 
-/** 一次性拉取所有类型工具，按类型分组返回（只含 active） */
+/** 一次性拉取所有类型工具，按类型分组返回（active 显示给所有人，pending 新增 + 有改动的也进待审批列表） */
 export async function listAllTools() {
-  if (!TID) return { fileTools: [], urlTools: [], dashItems: [] }
+  if (!TID) return { fileTools: [], urlTools: [], dashItems: [], pending: [], pendingEdits: [] }
   const data = await req(`/table/${TID}/record?take=500&fieldKeyType=name`)
   const all = (data.records ?? []).map(normTool)
   const active = all.filter(t => t.status === 'active' || t.status === '')
@@ -128,15 +139,61 @@ export async function listAllTools() {
     urlTools:  active.filter(t => t.toolType === '链接工具'),
     dashItems: active.filter(t => t.toolType === '数据看板'),
     pending:   all.filter(t => t.status === 'pending'),
+    pendingEdits: active.filter(t => t.pendingEdit),
   }
 }
 
-/** 审批工具（管理员） */
+/** 审批新增工具（管理员） */
 export async function approveTool(recordId, approved) {
   if (!TID) throw new Error('未配置工具表')
   await req(`/table/${TID}/record`, {
     method: 'PATCH',
     body: JSON.stringify({ records: [{ id: recordId, fields: { [FT.status]: approved ? 'active' : 'rejected' } }] }),
+  })
+}
+
+/** 提交一次「修改」请求：原值不动，仅写入待审改动 + 修改人 */
+export async function submitEdit(recordId, changes, editedBy) {
+  if (!TID) throw new Error('未配置工具表')
+  // changes: { name?, icon?, desc?, group?, url?, fileUrl?, fileName? }
+  await req(`/table/${TID}/record`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      fieldKeyType: 'name', typecast: true,
+      records: [{ id: recordId, fields: {
+        [FT.pendingEdit]: JSON.stringify(changes ?? {}),
+        [FT.editedBy]:    editedBy || '',
+      }}],
+    }),
+  })
+}
+
+/** 审批一次「修改」：approved=true 把改动应用到主字段并清空待审；false 仅清空 */
+export async function approveEdit(recordId, approved) {
+  if (!TID) throw new Error('未配置工具表')
+  // 先取当前记录 pendingEdit
+  const rec = await req(`/table/${TID}/record/${recordId}?fieldKeyType=name`)
+  const f = rec?.fields ?? {}
+  let changes = {}
+  const raw = f[FT.pendingEdit]
+  if (raw) { try { changes = typeof raw === 'string' ? JSON.parse(raw) : raw } catch {} }
+  const fields = {
+    [FT.pendingEdit]: '',
+    [FT.editedBy]:    '',
+  }
+  if (approved) {
+    const map = {
+      name: FT.name, icon: FT.icon, desc: FT.desc, group: FT.group,
+      url: FT.toolUrl, fileUrl: FT.fileUrl, fileName: FT.fileName,
+    }
+    for (const [k, v] of Object.entries(changes || {})) {
+      const t = map[k]
+      if (t) fields[t] = v ?? ''
+    }
+  }
+  await req(`/table/${TID}/record`, {
+    method: 'PATCH',
+    body: JSON.stringify({ fieldKeyType: 'name', typecast: true, records: [{ id: recordId, fields }] }),
   })
 }
 

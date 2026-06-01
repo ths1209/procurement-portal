@@ -156,23 +156,37 @@ export async function approveTool(recordId, approved) {
 export async function submitEdit(recordId, changes, editedBy) {
   if (!TID) throw new Error('未配置工具表')
   // changes: { name?, icon?, desc?, group?, url?, fileUrl?, fileName? }
-  await req(`/table/${TID}/record`, {
-    method: 'PATCH',
-    body: JSON.stringify({
-      fieldKeyType: 'name', typecast: true,
-      records: [{ id: recordId, fields: {
-        [FT.pendingEdit]: JSON.stringify(changes ?? {}),
-        [FT.editedBy]:    editedBy || '',
-      }}],
-    }),
+  const body = JSON.stringify({
+    fieldKeyType: 'name', typecast: true,
+    records: [{ id: recordId, fields: {
+      [FT.pendingEdit]: JSON.stringify(changes ?? {}),
+      [FT.editedBy]:    editedBy || '',
+    }}],
   })
+  try {
+    await req(`/table/${TID}/record`, { method: 'PATCH', body })
+  } catch (e) {
+    const msg = e.message || ''
+    if (/not found|do not exist|does not exist/i.test(msg)) {
+      await ensureToolsFields()
+      await req(`/table/${TID}/record`, { method: 'PATCH', body })
+    } else { throw e }
+  }
 }
 
 /** 审批一次「修改」：approved=true 把改动应用到主字段并清空待审；false 仅清空 */
 export async function approveEdit(recordId, approved) {
   if (!TID) throw new Error('未配置工具表')
   // 先取当前记录 pendingEdit
-  const rec = await req(`/table/${TID}/record/${recordId}?fieldKeyType=name`)
+  let rec
+  try {
+    rec = await req(`/table/${TID}/record/${recordId}?fieldKeyType=name`)
+  } catch (e) {
+    if (/not found|do not exist|does not exist/i.test(e.message || '')) {
+      await ensureToolsFields()
+      rec = await req(`/table/${TID}/record/${recordId}?fieldKeyType=name`)
+    } else { throw e }
+  }
   const f = rec?.fields ?? {}
   let changes = {}
   const raw = f[FT.pendingEdit]

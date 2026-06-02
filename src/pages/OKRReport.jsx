@@ -126,29 +126,58 @@ function useOKRAuth() {
 }
 
 // ── 主页面 ─────────────────────────────────────────────────────────────────────
+// 季度选项：当前财年 + 上一财年的 4 个季度，倒序，含「当前」标记
+const QUARTER_OPTS = (() => {
+  const opts = []
+  for (let y = FY.fy; y >= FY.fy - 1; y--) {
+    for (const q of ['Q4','Q3','Q2','Q1']) opts.push(`${y}-${q}`)
+  }
+  return opts
+})()
+
 export default function OKRReport() {
   const { isAdmin, myGroup, canAccess, profile } = useOKRAuth()
 
   const [tab,            setTab]           = useState('overview')
   const [loading,        setLoading]       = useState(true)
+  const [qLoading,       setQLoading]      = useState(false)
   const [error,          setError]         = useState('')
   const [annualOkr,      setAnnualOkr]     = useState({ objectives: [] })
   const [quarterlyOkr,   setQuarterlyOkr]  = useState({ objectives: [] })
   const [periods,        setPeriods]       = useState([])
   const [allReports,     setAllReports]    = useState({})
   const [selectedPeriod, setSelectedPeriod] = useState('')
+  const [viewQuarter,    setViewQuarter]   = useState(FY.qk)
+  const initialQuarterRef = useRef(true)
 
   useEffect(() => {
     if (!canAccess || !OKR_TID) { setLoading(false); return }
     init()
   }, [canAccess])
 
+  // 用户切换季度时重新拉取季度 OKR（首次由 init 负责，跳过）
+  useEffect(() => {
+    if (initialQuarterRef.current) { initialQuarterRef.current = false; return }
+    if (!canAccess || !OKR_TID) return
+    loadQuarterly(viewQuarter)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewQuarter])
+
+  async function loadQuarterly(qk) {
+    setQLoading(true)
+    try {
+      const q = await getOKRSetup(`quarterly-${qk}`)
+      setQuarterlyOkr(q)
+    } catch (e) { setError(e.message) }
+    finally { setQLoading(false) }
+  }
+
   async function init() {
     setLoading(true); setError('')
     try {
       await ensureOKRFields()
       const [a, q, p, allR] = await Promise.all([
-        getOKRSetup(FY.annualKey), getOKRSetup(FY.quarterlyKey),
+        getOKRSetup(FY.annualKey), getOKRSetup(`quarterly-${viewQuarter}`),
         getPeriods(), getAllPeriodsReports(),
       ])
       setAnnualOkr(a); setQuarterlyOkr(q)
@@ -201,10 +230,20 @@ export default function OKRReport() {
           <p className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>{FY.annualLabel}</p>
         </div>
         <div className="flex items-center gap-2.5">
-          <span className="inline-flex items-center px-3 py-1.5 rounded-xl text-[12px] font-bold"
-            style={{ background: 'rgba(37,99,235,0.1)', color: ACCENT, border: '1px solid rgba(37,99,235,0.15)' }}>
-            {FY.qk}
-          </span>
+          <div className="relative">
+            <select value={viewQuarter} onChange={e => setViewQuarter(e.target.value)}
+              className="press appearance-none pl-3 pr-7 py-1.5 rounded-xl text-[12px] font-bold cursor-pointer focus:outline-none"
+              style={{ background: 'rgba(37,99,235,0.1)', color: ACCENT, border: '1px solid rgba(37,99,235,0.15)' }}
+              title="切换查看的季度（仅影响季度 OKR 显示）">
+              {QUARTER_OPTS.map(qk => (
+                <option key={qk} value={qk}>{qk}{qk === FY.qk ? '（当前）' : ''}</option>
+              ))}
+            </select>
+            <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: ACCENT }} />
+          </div>
+          {qLoading && (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: ACCENT }} />
+          )}
           {myGroup && !isAdmin && (
             <span className="inline-flex items-center px-3 py-1.5 rounded-xl text-[11px] font-semibold"
               style={{ background: 'rgba(16,185,129,0.1)', color: '#059669', border: '1px solid rgba(16,185,129,0.2)' }}>
@@ -247,19 +286,20 @@ export default function OKRReport() {
         <>
           {tab === 'overview' && (
             <OverviewPanel annualOkr={annualOkr} quarterlyOkr={quarterlyOkr}
-              periods={periods} allReports={allReports} />
+              periods={periods} allReports={allReports} viewQuarter={viewQuarter} />
           )}
           {tab === 'report' && (
             <ReportPanel annualOkr={annualOkr} quarterlyOkr={quarterlyOkr}
               periods={periods} allReports={allReports}
               selectedPeriod={selectedPeriod} onPeriodChange={setSelectedPeriod}
-              myGroup={myGroup} profile={profile} onSaved={refreshReports} />
+              myGroup={myGroup} profile={profile} onSaved={refreshReports}
+              viewQuarter={viewQuarter} />
           )}
           {tab === 'ai' && (
             <AIReportPanel annualOkr={annualOkr} quarterlyOkr={quarterlyOkr}
-              periods={periods} allReports={allReports} />
+              periods={periods} allReports={allReports} viewQuarter={viewQuarter} />
           )}
-          {tab === 'setup' && <SetupPanel profile={profile} onSaved={init} />}
+          {tab === 'setup' && <SetupPanel profile={profile} onSaved={init} viewQuarter={viewQuarter} setViewQuarter={setViewQuarter} />}
           {tab === 'periods' && (
             <PeriodsPanel periods={periods} setPeriods={setPeriods}
               profile={profile} onNewPeriod={refreshReports} />
@@ -271,7 +311,7 @@ export default function OKRReport() {
 }
 
 // ── 进度总览（OKR 中心视图，跨周期对比） ──────────────────────────────────────────
-function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
+function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports, viewQuarter }) {
   const { profile, isAdmin } = useOKRAuth()
   const [typeFilter,    setTypeFilter]    = useState('')
   const [periodCount,   setPeriodCount]   = useState('all')  // 'all'|'3'|'6'|'single'
@@ -340,9 +380,9 @@ function OverviewPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
     if (!typeFilter || typeFilter === 'annual')
       annualOkr.objectives.forEach((obj, oi) => r.push({ typeLabel: '年度', oi, obj, typeColor: ACCENT }))
     if (!typeFilter || typeFilter === 'quarterly')
-      quarterlyOkr.objectives.forEach((obj, oi) => r.push({ typeLabel: `${FY.qk} 季度`, oi, obj, typeColor: Q_ACCENT }))
+      quarterlyOkr.objectives.forEach((obj, oi) => r.push({ typeLabel: `${viewQuarter} 季度`, oi, obj, typeColor: Q_ACCENT }))
     return r
-  }, [annualOkr, quarterlyOkr, typeFilter])
+  }, [annualOkr, quarterlyOkr, typeFilter, viewQuarter])
 
   function toggleObj(id) {
     setExpandedObjs(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
@@ -871,7 +911,7 @@ function CellDetailModal({ periodId, group, kr, periodLabel, allReports, onClose
 }
 
 // ── 填写报告（草稿 / 提交双状态） ─────────────────────────────────────────────
-function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPeriod, onPeriodChange, myGroup, profile, onSaved }) {
+function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPeriod, onPeriodChange, myGroup, profile, onSaved, viewQuarter }) {
   const [draft,       setDraft]       = useState({})
   const [saving,      setSaving]      = useState(false)
   const [saved,       setSaved]       = useState(false)
@@ -950,9 +990,9 @@ function ReportPanel({ annualOkr, quarterlyOkr, periods, allReports, selectedPer
   const allKRs = useMemo(() => {
     const r = []
     annualOkr.objectives.forEach((obj, oi) => obj.krs.forEach(kr => r.push({ typeLabel: '年度', oi, obj, kr })))
-    quarterlyOkr.objectives.forEach((obj, oi) => obj.krs.forEach(kr => r.push({ typeLabel: `${FY.qk} 季度`, oi, obj, kr })))
+    quarterlyOkr.objectives.forEach((obj, oi) => obj.krs.forEach(kr => r.push({ typeLabel: `${viewQuarter} 季度`, oi, obj, kr })))
     return r
-  }, [annualOkr, quarterlyOkr])
+  }, [annualOkr, quarterlyOkr, viewQuarter])
 
   function update(krId, field, value) {
     setDraft(prev => {
@@ -1317,7 +1357,7 @@ async function callAI(prompt) {
   throw new Error('AI 服务暂时不可用，请稍后重试')
 }
 
-function AIReportPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
+function AIReportPanel({ annualOkr, quarterlyOkr, periods, allReports, viewQuarter }) {
   const [mode,          setMode]          = useState('monthly')
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7))
   const [selectedYear,  setSelectedYear]  = useState(String(FY.fy))
@@ -1344,7 +1384,7 @@ function AIReportPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
       obj.krs.forEach((kr, ki) => { t += `  KR${ki+1}: ${kr.desc}\n` })
     })
     quarterlyOkr.objectives.forEach((obj, oi) => {
-      t += `O${oi+1}（${FY.qk}季度）: ${obj.objective}\n`
+      t += `O${oi+1}（${viewQuarter}季度）: ${obj.objective}\n`
       obj.krs.forEach((kr, ki) => { t += `  KR${ki+1}: ${kr.desc}\n` })
     })
     return t
@@ -1482,9 +1522,16 @@ function AIReportPanel({ annualOkr, quarterlyOkr, periods, allReports }) {
 }
 
 // ── OKR 设置（管理员） ─────────────────────────────────────────────────────────
-function SetupPanel({ profile, onSaved }) {
+function SetupPanel({ profile, onSaved, viewQuarter, setViewQuarter }) {
   const [subTab,  setSubTab]  = useState('annual')
-  const [qkSel,   setQkSel]   = useState(FY.qk)
+  const [qkSel,   setQkSel]   = useState(viewQuarter || FY.qk)
+  // 右上角切换季度时，同步刷新设置面板的季度子选择
+  useEffect(() => { if (viewQuarter) setQkSel(viewQuarter) }, [viewQuarter])
+  // 用户在设置内手动选择季度，也回写到右上角
+  function changeQk(v) {
+    setQkSel(v)
+    if (setViewQuarter) setViewQuarter(v)
+  }
   const [okrData, setOkrData] = useState({ objectives: [] })
   const [loading, setLoading] = useState(false)
   const [saving,  setSaving]  = useState(false)
@@ -1551,7 +1598,7 @@ function SetupPanel({ profile, onSaved }) {
           ))}
         </div>
         {subTab === 'quarterly' && (
-          <select value={qkSel} onChange={e => setQkSel(e.target.value)} className="field text-xs py-1.5 px-2" style={{ width: 'auto' }}>
+          <select value={qkSel} onChange={e => changeQk(e.target.value)} className="field text-xs py-1.5 px-2" style={{ width: 'auto' }}>
             {QK_OPTS.map(q => <option key={q} value={q}>{q}{q===FY.qk?'（当前）':''}</option>)}
           </select>
         )}

@@ -1,11 +1,11 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Wallet, Search, Loader2, AlertCircle, ExternalLink, X,
   Crown, User, Sparkles, FileText,
-  Calendar, Paperclip, Save, Edit3, SlidersHorizontal,
+  Calendar, Paperclip, Save, SlidersHorizontal,
   Check, ChevronDown, Star, RefreshCw, Handshake, Lock, ClipboardList,
+  ArrowRight, CheckCircle2,
 } from 'lucide-react'
-import { createPortal } from 'react-dom'
 import { useAuth } from '../contexts/AuthContext'
 import {
   listCostLedger, updateCostLedger, getAttachments, loadFieldChoices, loadViews,
@@ -13,8 +13,7 @@ import {
   SYSTEM_REF_GROUPS, computeCompleteness, DEFAULT_VIEW,
 } from '../lib/teableCostLedger'
 
-// 角色 → 颜色（柔和色块，非渐变）
-// 真实选项：主导者 / 谈判者 / 执行者
+// 角色 → 颜色（柔和色块）
 const ROLE_KEYS = ['主导者', '谈判者', '执行者']
 const ROLE_STYLE = {
   '主导者': { bg: 'rgba(239,68,68,0.10)',  color: '#DC2626', icon: Crown,     label: '主导者' },
@@ -22,13 +21,6 @@ const ROLE_STYLE = {
   '执行者': { bg: 'rgba(16,185,129,0.10)', color: '#059669', icon: Sparkles,  label: '执行者' },
 }
 const ROLE_FALLBACK = { bg: 'rgba(100,116,139,0.10)', color: '#475569', icon: User, label: '未分类' }
-
-// 详情抽屉里用渐变
-const ROLE_GRADIENT = {
-  '主导者': 'linear-gradient(135deg,#F59E0B,#EF4444)',
-  '谈判者': 'linear-gradient(135deg,#6366F1,#8B5CF6)',
-  '执行者': 'linear-gradient(135deg,#10B981,#22D3EE)',
-}
 
 const TEABLE_BASE = 'https://yach-teable.zhiyinlou.com/base/bsezwCnyl2rAB8R4wFT/table/tbl4e5Cuu6nlNw19uqz'
 
@@ -42,15 +34,11 @@ export default function CostLedger() {
   const [viewId,  setViewId]  = useState(DEFAULT_VIEW)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState('')
-  const [picked,  setPicked]  = useState(null)
+  const [pickedId, setPickedId] = useState(null)   // 当前选中项目 _id
 
   const [keyword, setKeyword] = useState('')
-  const [role,    setRole]    = useState('')
-  const [cat,     setCat]     = useState('')
-  const [buyer,   setBuyer]   = useState('')
-  const [org,     setOrg]     = useState('')
-  const [status,  setStatus]  = useState('')   // ''=全部 | 'todo'=待完善 | 'done'=已完善
-  const [sort,    setSort]    = useState('saving-desc')
+  const [status,  setStatus]  = useState('')        // ''=全部 | 'todo' | 'done'
+  const [sort,    setSort]    = useState('todo-first')
 
   useEffect(() => { load() }, [profile?.jobId, profile?.role, viewId])
 
@@ -75,25 +63,14 @@ export default function CostLedger() {
     }
   }
 
-  // 切换视图：重置筛选和已选记录
   function switchView(id) {
     if (id === viewId) return
     setViewId(id)
-    setKeyword(''); setRole(''); setCat(''); setBuyer(''); setOrg(''); setStatus('')
-    setPicked(null)
+    setKeyword(''); setStatus(''); setPickedId(null)
   }
 
-  // 筛选 / 排序
-  const roleOpts  = useMemo(() => uniq(rows.map(r => r.fields[F.role])), [rows])
-  const catOpts   = useMemo(() => {
-    const list = uniq(rows.flatMap(r => toArr(r.fields[F.categoryBig])))
-    const hasEmpty = rows.some(r => toArr(r.fields[F.categoryBig]).length === 0)
-    return hasEmpty ? ['未确认', ...list] : list
-  }, [rows])
-  const buyerOpts = useMemo(() => uniq(rows.map(r => r.fields[F.buyerName])), [rows])
-  const orgOpts   = useMemo(() => uniq(rows.map(r => r.fields[F.buyerOrg])), [rows])
-
-  const view = useMemo(() => {
+  // 过滤 + 排序后的列表
+  const list = useMemo(() => {
     let v = rows.slice()
     const kw = keyword.trim().toLowerCase()
     if (kw) {
@@ -103,114 +80,117 @@ export default function CostLedger() {
           .some(x => String(x || '').toLowerCase().includes(kw))
       })
     }
-    if (role)  v = v.filter(r => r.fields[F.role] === role)
-    if (cat)   v = v.filter(r => {
-      const cats = toArr(r.fields[F.categoryBig])
-      return cat === '未确认' ? cats.length === 0 : cats.includes(cat)
-    })
-    if (buyer) v = v.filter(r => r.fields[F.buyerName] === buyer)
-    if (org)   v = v.filter(r => r.fields[F.buyerOrg] === org)
     if (status) v = v.filter(r => {
-      const isDone = computeCompleteness(r.fields).done
-      return status === 'done' ? isDone : !isDone
+      const done = computeCompleteness(r.fields).done
+      return status === 'done' ? done : !done
     })
-    const k = sort
     v.sort((a, b) => {
       const fa = a.fields, fb = b.fields
-      if (k === 'saving-desc') return num(fb[F.savingAdjusted]) - num(fa[F.savingAdjusted])
-      if (k === 'rate-desc')   return num(fb[F.saveRate]) - num(fa[F.saveRate])
-      if (k === 'amount-desc') return num(fb[F.winAmount]) - num(fa[F.winAmount])
-      if (k === 'time-desc')   return new Date(fb[F.projectDate] || 0) - new Date(fa[F.projectDate] || 0)
+      if (sort === 'todo-first') {
+        // 待完善优先，其次按调整后降本降序
+        const da = computeCompleteness(fa).done ? 1 : 0
+        const db = computeCompleteness(fb).done ? 1 : 0
+        if (da !== db) return da - db
+        return num(fb[F.savingAdjusted]) - num(fa[F.savingAdjusted])
+      }
+      if (sort === 'saving-desc') return num(fb[F.savingAdjusted]) - num(fa[F.savingAdjusted])
+      if (sort === 'amount-desc') return num(fb[F.winAmount]) - num(fa[F.winAmount])
+      if (sort === 'time-desc')   return new Date(fb[F.projectDate] || 0) - new Date(fa[F.projectDate] || 0)
       return 0
     })
     return v
-  }, [rows, keyword, role, cat, buyer, org, status, sort])
+  }, [rows, keyword, status, sort])
 
-  // 概览统计：按三个角色分别计数
-  const stats = useMemo(() => {
-    const byRole = Object.fromEntries(ROLE_KEYS.map(k => [k, 0]))
-    for (const r of rows) {
-      const k = r.fields[F.role]
-      if (byRole[k] !== undefined) byRole[k] += 1
-    }
-    return byRole
-  }, [rows])
-
-  // 完整度统计：待完善 / 已完善 数量
+  // 完整度统计
   const completeness = useMemo(() => {
     let done = 0
     for (const r of rows) if (computeCompleteness(r.fields).done) done++
     return { total: rows.length, done, todo: rows.length - done }
   }, [rows])
 
-  if (error) {
-    return (
-      <ErrorState msg={error} onRetry={load} />
-    )
+  // 选中项：默认列表第一条
+  const picked = useMemo(() => {
+    if (!list.length) return null
+    return list.find(r => r._id === pickedId) || list[0]
+  }, [list, pickedId])
+
+  // 保存后更新本地数据
+  function applySaved(updated) {
+    setRows(rs => rs.map(r => r._id === updated._id ? updated : r))
   }
 
+  // 保存并跳到下一个待完善项目
+  function gotoNextTodo(currentId) {
+    const idx = list.findIndex(r => r._id === currentId)
+    // 从当前位置往后找第一个未完善的
+    for (let i = idx + 1; i < list.length; i++) {
+      if (!computeCompleteness(list[i].fields).done) { setPickedId(list[i]._id); return true }
+    }
+    for (let i = 0; i < idx; i++) {
+      if (!computeCompleteness(list[i].fields).done) { setPickedId(list[i]._id); return true }
+    }
+    return false
+  }
+
+  if (error) return <ErrorState msg={error} onRetry={load} />
+
   return (
-    <div className="flex flex-col gap-4 animate-page-in">
-      <Header isAdmin={isAdmin} loading={loading} onReload={load} shareUrl={`${TEABLE_BASE}/${viewId}`} />
+    <div className="flex flex-col gap-4 animate-page-in h-full">
+      <Header isAdmin={isAdmin} loading={loading} onReload={load}
+        shareUrl={`${TEABLE_BASE}/${viewId}`} c={completeness} />
 
       <ViewTabs views={views} current={viewId} onSwitch={switchView} loading={loading} />
-
-      {!loading && completeness.total > 0 && (
-        <TodoBanner c={completeness} active={status === 'todo'}
-          onFocus={() => setStatus(status === 'todo' ? '' : 'todo')} />
-      )}
-
-      <StatGrid s={stats} activeRole={role} onRoleClick={setRole} />
-
-      <Toolbar
-        keyword={keyword} setKeyword={setKeyword}
-        role={role}       setRole={setRole}       roleOpts={roleOpts}
-        cat={cat}         setCat={setCat}         catOpts={catOpts}
-        buyer={buyer}     setBuyer={setBuyer}     buyerOpts={buyerOpts}
-        org={org}         setOrg={setOrg}         orgOpts={orgOpts}
-        status={status}   setStatus={setStatus}
-        sort={sort}       setSort={setSort}
-        count={view.length}
-        isAdmin={isAdmin}
-      />
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--muted)' }} />
         </div>
-      ) : view.length === 0 ? (
-        <Empty hasData={rows.length > 0} />
+      ) : rows.length === 0 ? (
+        <Empty hasData={false} />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4 stagger">
-          {view.map(r => (
-            <RecordCard key={r._id} record={r} onOpen={() => setPicked(r)} />
-          ))}
-        </div>
-      )}
+        <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 min-h-0 flex-1">
+          {/* 左：项目列表 */}
+          <ProjectList
+            list={list} pickedId={picked?._id} onPick={setPickedId}
+            keyword={keyword} setKeyword={setKeyword}
+            status={status} setStatus={setStatus}
+            sort={sort} setSort={setSort}
+            total={rows.length}
+          />
 
-      {picked && (
-        <DetailDrawer
-          record={picked}
-          choices={choices}
-          onClose={() => setPicked(null)}
-          onSaved={upd => { setRows(rs => rs.map(r => r._id === upd._id ? upd : r)); setPicked(upd) }}
-          isAdmin={isAdmin}
-        />
+          {/* 右：填写大表单 */}
+          {picked ? (
+            <ProjectForm
+              key={picked._id}
+              record={picked} choices={choices} isAdmin={isAdmin}
+              hasNextTodo={completeness.todo > (computeCompleteness(picked.fields).done ? 0 : 1)}
+              onSaved={applySaved}
+              onSavedNext={gotoNextTodo}
+            />
+          ) : (
+            <div className="card flex items-center justify-center text-[13px]"
+              style={{ color: 'var(--muted)' }}>没有符合条件的项目</div>
+          )}
+        </div>
       )}
     </div>
   )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-function Header({ isAdmin, loading, onReload, shareUrl }) {
+function Header({ isAdmin, loading, onReload, shareUrl, c }) {
+  const allDone = c.todo === 0 && c.total > 0
   return (
     <div className="flex items-center justify-between gap-4 flex-wrap">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2.5">
         <Wallet className="w-5 h-5 shrink-0" style={{ color: '#6366F1' }} strokeWidth={1.75} />
         <div>
-          <h1 className="font-semibold text-base leading-tight" style={{ color: 'var(--text)' }}>成本台账</h1>
+          <h1 className="font-semibold text-base leading-tight" style={{ color: 'var(--text)' }}>成本台账 · 项目维护</h1>
           <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
-            {isAdmin ? '管理员视图 · 全部数据' : '仅显示您作为采购员参与的单据'}
+            {isAdmin ? '管理员视图 · 全部数据' : '仅显示您参与的项目'}
+            {c.total > 0 && (allDone
+              ? <span className="ml-1.5" style={{ color: '#059669' }}>· 全部 {c.total} 个已完善 🎉</span>
+              : <span className="ml-1.5" style={{ color: '#B45309' }}>· {c.todo} 个待完善 / 共 {c.total}</span>)}
           </p>
         </div>
       </div>
@@ -231,69 +211,19 @@ function Header({ isAdmin, loading, onReload, shareUrl }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// 待办横幅：驱动用户完善项目
-function TodoBanner({ c, active, onFocus }) {
-  const allDone = c.todo === 0
-  const pct = c.total > 0 ? Math.round(c.done / c.total * 100) : 0
-  if (allDone) {
-    return (
-      <div className="flex items-center gap-2.5 px-4 py-3 rounded-2xl"
-        style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
-        <Check className="w-4 h-4 shrink-0" style={{ color: '#059669' }} />
-        <span className="text-[13px] font-semibold" style={{ color: '#047857' }}>
-          全部 {c.total} 个项目已完善 🎉
-        </span>
-      </div>
-    )
-  }
-  return (
-    <button onClick={onFocus}
-      className="press w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition-colors"
-      style={{
-        background: active ? 'rgba(245,158,11,0.12)' : 'rgba(245,158,11,0.06)',
-        border: `1px solid ${active ? 'rgba(245,158,11,0.4)' : 'rgba(245,158,11,0.2)'}`,
-      }}>
-      <ClipboardList className="w-4 h-4 shrink-0" style={{ color: '#D97706' }} />
-      <div className="flex-1 min-w-0">
-        <p className="text-[13px] font-semibold" style={{ color: '#92400E' }}>
-          你还有 <span className="tabular-nums">{c.todo}</span> 个项目待完善
-        </p>
-        <div className="flex items-center gap-2 mt-1.5">
-          <div className="flex-1 max-w-[220px] h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(245,158,11,0.18)' }}>
-            <div className="h-full rounded-full transition-all"
-              style={{ width: `${pct}%`, background: 'linear-gradient(90deg,#F59E0B,#10B981)' }} />
-          </div>
-          <span className="text-[11px] tabular-nums" style={{ color: '#B45309' }}>
-            {c.done}/{c.total} 已完善
-          </span>
-        </div>
-      </div>
-      <span className="text-[11px] font-semibold px-2.5 py-1 rounded-lg shrink-0"
-        style={{ background: active ? '#D97706' : 'rgba(245,158,11,0.15)', color: active ? '#fff' : '#B45309' }}>
-        {active ? '正在筛选' : '只看待完善'}
-      </span>
-    </button>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// 视图名前缀 emoji → 纯色 HEX（Teable 视图名常带 🚩🟢🔴🟡 等图标）
+// 视图名前缀 emoji → 纯色
 const VIEW_EMOJI_COLOR = {
   '🚩': '#EF4444', '🏁': '#EF4444',
   '🟢': '#22C55E', '🟩': '#22C55E', '✅': '#22C55E',
   '🔴': '#DC2626', '⭕': '#DC2626',
   '🟡': '#F59E0B', '🟨': '#F59E0B', '⚠️': '#F59E0B',
-  '🟠': '#F97316',
-  '🔵': '#3B82F6', '🟦': '#3B82F6',
-  '🟣': '#8B5CF6',
-  '⚫': '#475569', '⚪': '#94A3B8',
+  '🟠': '#F97316', '🔵': '#3B82F6', '🟦': '#3B82F6',
+  '🟣': '#8B5CF6', '⚫': '#475569', '⚪': '#94A3B8',
 }
-// 回退调色板：视图名没有 emoji 时按索引分配
 const VIEW_FALLBACK = ['#6366F1', '#22C55E', '#F59E0B', '#EC4899', '#0EA5E9']
 
 function parseViewName(raw, idx) {
   const name = String(raw || '').trim()
-  // 取首个字符（可能是 emoji，emoji 可能 2 个 code unit）
   const first2 = name.slice(0, 2)
   const first1 = name.slice(0, 1)
   if (VIEW_EMOJI_COLOR[first2]) return { color: VIEW_EMOJI_COLOR[first2], label: name.slice(2).trim() }
@@ -301,7 +231,6 @@ function parseViewName(raw, idx) {
   return { color: VIEW_FALLBACK[idx % VIEW_FALLBACK.length], label: name }
 }
 
-// 视图切换 tabs：去 emoji，换成纯色小方块，激活带主色下划线
 function ViewTabs({ views, current, onSwitch, loading }) {
   if (!views.length) return null
   return (
@@ -311,25 +240,13 @@ function ViewTabs({ views, current, onSwitch, loading }) {
         const active = v.id === current
         const { color, label } = parseViewName(v.name, idx)
         return (
-          <button key={v.id}
-            onClick={() => onSwitch(v.id)}
-            disabled={loading && active}
+          <button key={v.id} onClick={() => onSwitch(v.id)} disabled={loading && active}
             className="view-tab press relative inline-flex items-center gap-2 px-3 py-2 text-[12.5px] whitespace-nowrap transition-colors shrink-0"
-            style={{
-              color: active ? 'var(--text)' : 'var(--muted)',
-              fontWeight: active ? 600 : 500,
-            }}>
+            style={{ color: active ? 'var(--text)' : 'var(--muted)', fontWeight: active ? 600 : 500 }}>
             <span className="w-2 h-2 rounded-sm shrink-0"
-              style={{
-                background: color,
-                opacity: active ? 1 : 0.55,
-                transition: 'opacity 0.18s ease',
-              }} />
+              style={{ background: color, opacity: active ? 1 : 0.55, transition: 'opacity 0.18s ease' }} />
             {label || v.name}
-            {active && (
-              <span className="absolute left-3 right-3 bottom-0 h-[2px] rounded-t"
-                style={{ background: color }} />
-            )}
+            {active && <span className="absolute left-3 right-3 bottom-0 h-[2px] rounded-t" style={{ background: color }} />}
           </button>
         )
       })}
@@ -338,247 +255,134 @@ function ViewTabs({ views, current, onSwitch, loading }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-function StatGrid({ s, activeRole, onRoleClick }) {
-  const items = ROLE_KEYS.map(k => ({
-    key: k,
-    color: ROLE_STYLE[k].color,
-    icon: ROLE_STYLE[k].icon,
-    value: s[k] || 0,
-  }))
+// 左侧项目列表
+function ProjectList({ list, pickedId, onPick, keyword, setKeyword, status, setStatus, sort, setSort, total }) {
   return (
-    <div className="grid grid-cols-3 gap-3">
-      {items.map(it => {
-        const active = activeRole === it.key
-        const Icon = it.icon
-        return (
-          <button key={it.key}
-            onClick={() => onRoleClick(active ? '' : it.key)}
-            className="card press p-4 text-left relative overflow-hidden"
-            style={{
-              borderColor: active ? it.color : undefined,
-              boxShadow: active ? `0 0 0 2px ${it.color}33, 0 4px 16px ${it.color}22` : undefined,
-            }}>
-            <div className="flex items-center justify-between mb-2">
-              <span className="inline-flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--muted)' }}>
-                <Icon className="w-3.5 h-3.5" style={{ color: it.color }} />{it.key}
-              </span>
-              {active && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
-                style={{ background: `${it.color}18`, color: it.color }}>已筛选</span>}
-            </div>
-            <p className="text-2xl font-bold tabular-nums" style={{ color: it.color }}>
-              {it.value}<span className="text-xs font-medium ml-1" style={{ color: 'var(--muted)' }}>个</span>
-            </p>
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-function Toolbar({ keyword, setKeyword, role, setRole, roleOpts,
-                   cat, setCat, catOpts, buyer, setBuyer, buyerOpts,
-                   org, setOrg, orgOpts, status, setStatus, sort, setSort, count, isAdmin }) {
-  const hasFilter = role || cat || buyer || org || keyword || status
-  function clearAll() {
-    setKeyword(''); setRole(''); setCat(''); setBuyer(''); setOrg(''); setStatus('')
-  }
-  return (
-    <div className="flex items-center gap-2 flex-wrap px-1">
-      <div className="relative flex-1 min-w-[220px] max-w-[360px]">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--muted)' }} />
-        <input value={keyword} onChange={e => setKeyword(e.target.value)}
-          placeholder="搜索项目 / 供应商 / 合同号 / 采购员"
-          className="w-full pl-9 pr-3 py-1.5 rounded-lg text-[13px] outline-none transition-colors"
-          style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid transparent' }} />
+    <div className="card flex flex-col overflow-hidden" style={{ maxHeight: 'calc(100vh - 180px)' }}>
+      {/* 搜索 + 筛选 */}
+      <div className="p-3 space-y-2.5 shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--muted)' }} />
+          <input value={keyword} onChange={e => setKeyword(e.target.value)}
+            placeholder="搜索项目 / 供应商 / 采购员"
+            className="w-full pl-9 pr-3 py-2 rounded-lg text-[12.5px] outline-none"
+            style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid transparent' }} />
+        </div>
+        <div className="flex items-center gap-1.5">
+          {[['', '全部'], ['todo', '待完善'], ['done', '已完善']].map(([v, l]) => (
+            <button key={v} onClick={() => setStatus(v)}
+              className="press flex-1 py-1.5 rounded-lg text-[11.5px] font-semibold transition-colors"
+              style={status === v
+                ? (v === 'todo'
+                    ? { background: '#F59E0B', color: '#fff' }
+                    : v === 'done'
+                      ? { background: '#10B981', color: '#fff' }
+                      : { background: '#6366F1', color: '#fff' })
+                : { background: 'var(--surface2)', color: 'var(--muted)' }}>
+              {l}
+            </button>
+          ))}
+        </div>
+        <MiniSelect value={sort} onChange={setSort} icon={SlidersHorizontal} block options={[
+          { value: 'todo-first',  label: '待完善优先' },
+          { value: 'saving-desc', label: '按调整后降本' },
+          { value: 'amount-desc', label: '按合同金额' },
+          { value: 'time-desc',   label: '按立项时间' },
+        ]} />
       </div>
 
-      <MiniSelect value={status} onChange={setStatus} placeholder="全部状态" options={[
-        { value: 'todo', label: '待完善' },
-        { value: 'done', label: '已完善' },
-      ]} />
-      <MiniSelect value={role} onChange={setRole} placeholder="全部角色" options={roleOpts} />
-      <MiniSelect value={cat}  onChange={setCat}  placeholder="全部品类" options={catOpts} />
-      {isAdmin && buyerOpts.length > 1 && (
-        <MiniSelect value={buyer} onChange={setBuyer} placeholder="全部采购员" options={buyerOpts} />
-      )}
-      {orgOpts.length > 1 && (
-        <MiniSelect value={org} onChange={setOrg} placeholder="全部采购组织" options={orgOpts} />
-      )}
+      {/* 列表 */}
+      <div className="flex-1 overflow-y-auto">
+        {list.length === 0 ? (
+          <div className="px-4 py-10 text-center text-[12px]" style={{ color: 'var(--muted)' }}>
+            没有符合条件的项目
+          </div>
+        ) : list.map(r => (
+          <ProjectListItem key={r._id} record={r} active={r._id === pickedId} onClick={() => onPick(r._id)} />
+        ))}
+      </div>
 
-      <MiniSelect value={sort} onChange={setSort} options={[
-        { value: 'saving-desc', label: '按降本金额' },
-        { value: 'rate-desc',   label: '按降本率'   },
-        { value: 'amount-desc', label: '按合同金额' },
-        { value: 'time-desc',   label: '按时间'     },
-      ]} icon={SlidersHorizontal} />
-
-      <div className="flex items-center gap-2 ml-auto text-[11.5px]" style={{ color: 'var(--muted)' }}>
-        {hasFilter && (
-          <button onClick={clearAll}
-            className="press inline-flex items-center gap-1 px-2 py-1 rounded-md transition-colors hover:text-[var(--text)]"
-            style={{ color: 'var(--muted)' }}>
-            <X className="w-3 h-3" />清空
-          </button>
-        )}
-        <span>共 <span className="font-semibold tabular-nums" style={{ color: 'var(--text)' }}>{count}</span> 条</span>
+      <div className="px-3 py-2 text-[11px] shrink-0 text-center"
+        style={{ borderTop: '1px solid var(--border)', color: 'var(--muted)' }}>
+        显示 {list.length} / 共 {total} 个项目
       </div>
     </div>
   )
 }
 
-/**
- * 极简下拉：默认完全透明，hover 显浅底；一旦有值则文字变主色且左侧带小圆点。
- */
-function MiniSelect({ value, onChange, options, placeholder, icon: Icon }) {
-  const opts = options.map(o => typeof o === 'string' ? { value: o, label: o } : o)
-  const active = !!value
-  return (
-    <div className="relative mini-select" data-active={active ? '1' : '0'}>
-      {Icon && !active && (
-        <Icon className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: 'var(--muted)' }} />
-      )}
-      {active && (
-        <span className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full pointer-events-none"
-          style={{ background: '#6366F1' }} />
-      )}
-      <select value={value} onChange={e => onChange(e.target.value)}
-        className={`appearance-none py-1.5 pr-6 rounded-md text-[12.5px] outline-none cursor-pointer transition-colors ${(Icon || active) ? 'pl-6' : 'pl-2.5'}`}
-        style={{
-          background: 'transparent',
-          color: active ? '#4F46E5' : 'var(--text)',
-          fontWeight: active ? 600 : 500,
-          border: '1px solid transparent',
-        }}>
-        {placeholder && <option value="">{placeholder}</option>}
-        {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-      <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none"
-        style={{ color: active ? '#6366F1' : 'var(--muted)', opacity: 0.7 }} />
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-function RecordCard({ record, onOpen }) {
+function ProjectListItem({ record, active, onClick }) {
   const f = record.fields
+  const cp = computeCompleteness(f)
   const roleKey = f[F.role] || ''
   const roleStyle = ROLE_STYLE[roleKey] || ROLE_FALLBACK
-  const RoleIcon = roleStyle.icon
-
-  const saving    = num(f[F.savingAdjusted])
-  const winAmount = num(f[F.winAmount])
-  const rate      = winAmount > 0 ? saving / winAmount : num(f[F.saveRate])
-  const catArr    = toArr(f[F.categoryBig])
-  const cat       = catArr[0] || ''
-  const catEmpty  = catArr.length === 0
-  const attachCount = [F.priceAttach, F.roleAttach, F.marketAttach, F.otherAttach, F.quoteAttach]
-    .reduce((s, fld) => s + (Array.isArray(f[fld]) ? f[fld].length : 0), 0)
-  const cp = computeCompleteness(f)
+  const barColor = cp.done ? '#10B981' : '#F59E0B'
 
   return (
-    <button onClick={onOpen}
-      className="card cost-card text-left w-full rounded-2xl p-5 group relative">
-      {/* 未完善：左上角琥珀圆点 */}
-      {!cp.done && (
-        <span className="absolute top-3 left-3 w-2 h-2 rounded-full"
-          style={{ background: '#F59E0B', boxShadow: '0 0 0 3px rgba(245,158,11,0.15)' }} />
-      )}
-      {/* 顶部：角色 + 品类 */}
-      <div className="flex items-center justify-between mb-4">
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-semibold"
-          style={{ background: roleStyle.bg, color: roleStyle.color }}>
-          <RoleIcon className="w-2.5 h-2.5" />{roleStyle.label}
-        </span>
-        <span className="text-[10.5px] px-1.5 py-0.5 rounded"
-          style={{
-            color: catEmpty ? '#F59E0B' : 'var(--muted)',
-            background: catEmpty ? 'rgba(245,158,11,0.1)' : 'transparent',
-            fontWeight: catEmpty ? 600 : 400,
-          }}>
-          {catEmpty ? '未确认' : cat}
+    <button onClick={onClick}
+      className="w-full text-left px-3.5 py-3 transition-colors relative"
+      style={{
+        borderBottom: '1px solid var(--border)',
+        background: active ? 'rgba(99,102,241,0.07)' : 'transparent',
+        boxShadow: active ? 'inset 3px 0 0 #6366F1' : 'none',
+      }}
+      onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--surface2)' }}
+      onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}>
+      <div className="flex items-center gap-1.5 mb-1">
+        {cp.done
+          ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" style={{ color: '#10B981' }} />
+          : <span className="w-2 h-2 rounded-full shrink-0 ml-0.5 mr-0.5" style={{ background: '#F59E0B' }} />}
+        <span className="text-[13px] font-medium truncate flex-1" style={{ color: 'var(--text)' }}>
+          {f[F.projectName] || '未命名项目'}
         </span>
       </div>
-
-      {/* 标识：项目名 + 供应商（固定 2 行高度） */}
-      <h3 className="text-[14.5px] font-semibold tracking-tight leading-tight truncate mb-1"
-        style={{ color: 'var(--text)' }}>
-        {f[F.projectName] || '未命名项目'}
-      </h3>
-      <p className="text-[11.5px] truncate mb-4" style={{ color: 'var(--muted)' }}>
-        {f[F.supplier] || '—'}
-      </p>
-
-      {/* 英雄数字：降本金额 */}
-      <div className="flex items-baseline gap-1.5 mb-1">
-        <span className="text-[26px] font-bold tracking-tight leading-none" style={{ color: '#10B981' }}>
-          ¥{fmtCNY(saving)}
+      <div className="flex items-center gap-2 mb-1.5 pl-5">
+        <span className="text-[10px] px-1.5 py-px rounded font-medium"
+          style={{ background: roleStyle.bg, color: roleStyle.color }}>{roleStyle.label}</span>
+        <span className="text-[11px] truncate" style={{ color: 'var(--muted)' }}>
+          ¥{fmtCNY(f[F.savingAdjusted])} 降本
         </span>
-        <span className="text-[11px]" style={{ color: 'var(--muted)' }}>降本</span>
       </div>
-      <p className="text-[11.5px] mb-4" style={{ color: 'var(--muted)' }}>
-        降本率 <span className="font-semibold" style={{ color: 'var(--text)' }}>{fmtPct(rate)}</span>
-        {' · '}
-        合同 <span className="font-semibold" style={{ color: 'var(--text)' }}>¥{fmtCNY(winAmount)}</span>
-      </p>
-
-      {/* 完整度进度 */}
-      <div className="pt-3 mb-2.5" style={{ borderTop: '1px solid var(--border)' }}>
-        {cp.done ? (
-          <span className="inline-flex items-center gap-1 text-[11px] font-semibold" style={{ color: '#059669' }}>
-            <Check className="w-3 h-3" />已完善
-          </span>
-        ) : (
-          <>
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[11px] font-semibold" style={{ color: '#B45309' }}>
-                待填 {cp.missing.length} 项：{cp.missing.slice(0, 2).join('、')}{cp.missing.length > 2 ? '…' : ''}
-              </span>
-              <span className="text-[10.5px] tabular-nums" style={{ color: 'var(--muted)' }}>{cp.filled}/{cp.total}</span>
-            </div>
-            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--surface2)' }}>
-              <div className="h-full rounded-full transition-all"
-                style={{ width: `${cp.pct}%`, background: 'linear-gradient(90deg,#F59E0B,#10B981)' }} />
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* 弱化 meta */}
-      <div className="flex items-center gap-3 text-[10.5px]" style={{ color: 'var(--muted)' }}>
-        <span className="flex items-center gap-1">
-          <Calendar className="w-3 h-3" />{fmtDate(f[F.projectDate]) || '—'}
+      {/* 完成度条 */}
+      <div className="flex items-center gap-2 pl-5">
+        <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: 'var(--surface2)' }}>
+          <div className="h-full rounded-full transition-all" style={{ width: `${cp.pct}%`, background: barColor }} />
+        </div>
+        <span className="text-[10px] tabular-nums shrink-0"
+          style={{ color: cp.done ? '#059669' : '#B45309' }}>
+          {cp.done ? '已完善' : `${cp.filled}/${cp.total}`}
         </span>
-        {attachCount > 0 && (
-          <span className="flex items-center gap-0.5">
-            <Paperclip className="w-3 h-3" />{attachCount}
-          </span>
-        )}
       </div>
     </button>
   )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-function DetailDrawer({ record, choices, onClose, onSaved, isAdmin }) {
+// 右侧填写大表单
+function ProjectForm({ record, choices, isAdmin, hasNextTodo, onSaved, onSavedNext }) {
   const f = record.fields
-  const [edit, setEdit] = useState(false)
   const [draft, setDraft] = useState(() => pickEditable(f))
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
+  const [savedFlash, setSavedFlash] = useState(false)
+  const [showSysRef, setShowSysRef] = useState(false)
+  const scrollRef = useRef(null)
 
-  useEffect(() => {
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = prev }
-  }, [])
+  // 实时完整度（基于 draft）
+  const cp = computeCompleteness({ ...f, ...draft })
 
-  async function save() {
+  function set(name, v) { setDraft(d => ({ ...d, [name]: v })) }
+
+  async function doSave(thenNext) {
     setSaving(true); setErr('')
     try {
       await updateCostLedger(record._id, draft)
-      onSaved({ ...record, fields: { ...record.fields, ...draft } })
-      setEdit(false)
+      const updated = { ...record, fields: { ...record.fields, ...draft } }
+      onSaved(updated)
+      setSavedFlash(true); setTimeout(() => setSavedFlash(false), 2000)
+      if (thenNext) {
+        const moved = onSavedNext(record._id)
+        if (!moved) scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+      }
     } catch (e) {
       setErr(e.message || '保存失败')
     } finally {
@@ -586,275 +390,290 @@ function DetailDrawer({ record, choices, onClose, onSaved, isAdmin }) {
     }
   }
 
-  function cancel() {
-    setDraft(pickEditable(f))
-    setEdit(false); setErr('')
-  }
-
   const roleKey = f[F.role] || ''
   const roleStyle = ROLE_STYLE[roleKey] || ROLE_FALLBACK
-  const roleGradient = ROLE_GRADIENT[roleKey] || 'linear-gradient(135deg,#64748b,#94a3b8)'
   const RoleIcon = roleStyle.icon
-  const rate = num(f[F.winAmount]) > 0 ? num(f[F.savingAdjusted]) / num(f[F.winAmount]) : num(f[F.saveRate])
-  // 完整度基于"当前 draft（编辑中）或已存值"实时计算
-  const cp = computeCompleteness(edit ? { ...f, ...draft } : f)
 
-  return createPortal(
-    <div className="fixed inset-0 z-[200] flex" onClick={onClose}
-      style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)' }}>
-      <div className="ml-auto w-full max-w-[720px] h-full overflow-y-auto animate-slide-in-right relative"
-        onClick={e => e.stopPropagation()}
-        style={{ background: 'var(--bg)', boxShadow: '-20px 0 40px rgba(0,0,0,0.2)' }}>
-
-        {/* 顶栏 */}
-        <header className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 backdrop-blur-md"
-          style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
-          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-white shrink-0"
-              style={{ background: roleGradient }}>
-              <RoleIcon className="w-3 h-3" />{roleStyle.label}
-            </span>
-            <h2 className="text-[15px] font-bold truncate" style={{ color: 'var(--text)' }}>
-              {f[F.projectName] || '项目详情'}
-            </h2>
+  return (
+    <div ref={scrollRef} className="card flex flex-col overflow-hidden" style={{ maxHeight: 'calc(100vh - 180px)' }}>
+      {/* 顶栏：项目名 + 完整度 */}
+      <div className="px-5 py-4 shrink-0" style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-semibold shrink-0"
+                style={{ background: roleStyle.bg, color: roleStyle.color }}>
+                <RoleIcon className="w-2.5 h-2.5" />{roleStyle.label}
+              </span>
+              <h2 className="text-[15px] font-bold truncate" style={{ color: 'var(--text)' }}>
+                {f[F.projectName] || '未命名项目'}
+              </h2>
+            </div>
+            <p className="text-[11.5px] truncate" style={{ color: 'var(--muted)' }}>
+              {f[F.supplier] || '—'} · {f[F.requestDept] || '—'}
+            </p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {!edit ? (
-              <button onClick={() => setEdit(true)}
-                className="press flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium transition-colors"
-                style={cp.done
-                  ? { background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }
-                  : { background: 'linear-gradient(135deg,#F59E0B,#F97316)', color: '#fff', border: '1px solid transparent' }}>
-                <Edit3 className="w-3.5 h-3.5" />{cp.done ? '编辑' : '去完善'}
-              </button>
-            ) : (
-              <>
-                <button onClick={cancel} disabled={saving}
-                  className="press px-3 py-1.5 rounded-xl text-[12px] font-medium transition-colors"
-                  style={{ background: 'var(--surface2)', color: 'var(--muted)' }}>取消</button>
-                <button onClick={save} disabled={saving}
-                  className="press flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-semibold text-white transition-colors disabled:opacity-60"
-                  style={{ background: 'linear-gradient(135deg,#6366F1,#8B5CF6)' }}>
-                  {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                  保存
-                </button>
-              </>
-            )}
-            <button onClick={onClose}
-              className="press w-8 h-8 flex items-center justify-center rounded-xl"
-              style={{ background: 'var(--surface2)', color: 'var(--muted)' }}>
-              <X className="w-4 h-4" />
-            </button>
+          {/* 完整度环形指示 */}
+          <CompletenessBadge cp={cp} />
+        </div>
+        {/* 缺失项提示 */}
+        {!cp.done && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-[11.5px]"
+            style={{ background: 'rgba(245,158,11,0.08)', color: '#92400E', border: '1px solid rgba(245,158,11,0.2)' }}>
+            <ClipboardList className="w-3.5 h-3.5 shrink-0" />
+            还需填写：<span className="font-semibold">{cp.missing.join('、')}</span>
           </div>
-        </header>
+        )}
+      </div>
 
+      {/* 表单滚动区 */}
+      <div className="flex-1 overflow-y-auto p-5 space-y-5">
         {err && (
-          <div className="mx-6 mt-4 p-3 rounded-xl text-[12px] flex items-center gap-2"
+          <div className="p-3 rounded-xl text-[12px] flex items-center gap-2"
             style={{ background: 'rgba(239,68,68,0.08)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)' }}>
             <AlertCircle className="w-3.5 h-3.5" />{err}
           </div>
         )}
 
-        <div className="p-6 space-y-5">
-          {/* 完整度提示条 */}
-          {cp.done ? (
-            <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[12px]"
-              style={{ background: 'rgba(16,185,129,0.08)', color: '#047857', border: '1px solid rgba(16,185,129,0.2)' }}>
-              <Check className="w-3.5 h-3.5 shrink-0" />本项目维护信息已完善
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[12px]"
-              style={{ background: 'rgba(245,158,11,0.08)', color: '#92400E', border: '1px solid rgba(245,158,11,0.2)' }}>
-              <ClipboardList className="w-3.5 h-3.5 shrink-0" />
-              还需填写 {cp.missing.length} 项：<span className="font-semibold">{cp.missing.join('、')}</span>
+        {/* 系统只读信息（默认折叠，强调"填写"为主） */}
+        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+          <button onClick={() => setShowSysRef(s => !s)}
+            className="press w-full flex items-center gap-2 px-4 py-2.5"
+            style={{ background: 'var(--surface2)' }}>
+            <Lock className="w-3.5 h-3.5" style={{ color: 'var(--muted)' }} />
+            <span className="text-[12px] font-semibold" style={{ color: 'var(--text)' }}>系统信息（只读）</span>
+            <span className="text-[10.5px]" style={{ color: 'var(--muted)' }}>项目基础 · 系统计算金额 · 财年加权</span>
+            <ChevronDown className="w-4 h-4 ml-auto transition-transform"
+              style={{ color: 'var(--muted)', transform: showSysRef ? 'rotate(180deg)' : 'none' }} />
+          </button>
+          {showSysRef && (
+            <div className="p-4 space-y-4" style={{ borderTop: '1px solid var(--border)' }}>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                <KV label="需求部门"   value={f[F.requestDept]} />
+                <KV label="立项单号"   value={f[F.projectNo]} />
+                <KV label="合同号"     value={f[F.contractNo]} />
+                <KV label="中标供应商" value={f[F.supplier]} />
+                <KV label="一级品类"   value={f[F.category1]} />
+                <KV label="采购组织"   value={f[F.buyerOrg]} />
+                <KV label="立项时间"   value={fmtDate(f[F.projectDate])} />
+                <KV label="合同结束"   value={fmtDate(f[F.contractEndMax]) || fmtDate(f[F.contractEnd])} />
+                {isAdmin && <KV label="采购员" value={`${f[F.buyerName] || ''} ${f[F.buyerJobId] ? '('+f[F.buyerJobId]+')' : ''}`.trim()} />}
+              </div>
+              {SYSTEM_REF_GROUPS.map(g => (
+                <div key={g.title}>
+                  <p className="text-[11px] font-bold mb-1.5 flex items-center gap-1.5" style={{ color: 'var(--muted)' }}>
+                    {g.title}
+                    <span className="text-[9.5px] font-normal opacity-70">· {g.hint}</span>
+                  </p>
+                  <div className="grid grid-cols-3 gap-3">
+                    {g.fields.map(meta => {
+                      const raw = fmtCNY(f[meta.name])
+                      return (
+                        <div key={meta.name} className="rounded-lg px-3 py-2" style={{ background: 'var(--surface2)' }}>
+                          <div className="text-[10px] mb-0.5" style={{ color: 'var(--muted)' }}>{meta.label}</div>
+                          <div className="text-[13px] font-semibold tabular-nums" style={{ color: 'var(--text)' }}>
+                            {raw === '—' ? '—' : `¥${raw}`}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
-
-          {/* 金额大卡 */}
-          <div className="rounded-2xl p-5 relative overflow-hidden"
-            style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(139,92,246,0.04))', border: '1px solid var(--border)' }}>
-            <div className="grid grid-cols-3 gap-4">
-              <BigMetric label="中标金额"    value={fmtCNY(f[F.winAmount])}       unit="元" color="var(--text)" />
-              <BigMetric label="调整后降本"  value={fmtCNY(f[F.savingAdjusted])}  unit="元" color="#10B981" />
-              <BigMetric label="降本率"      value={fmtPct(rate).replace('%','')} unit="%" color="#F59E0B" />
-            </div>
-            <p className="text-[11px] mt-3 pt-3" style={{ color: 'var(--muted)', borderTop: '1px solid var(--border)' }}>
-              系统参考降本金额 <span className="font-semibold" style={{ color: 'var(--text)' }}>¥{fmtCNY(f[F.saveAmount])}</span>
-              <span className="ml-1 opacity-70">（来自跑数，供「调整后降本」对照填写）</span>
-            </p>
-          </div>
-
-          {/* 项目只读信息 */}
-          <Section title="项目信息" icon={FileText}>
-            <KV label="需求部门"   value={f[F.requestDept]} />
-            <KV label="立项单号"   value={f[F.projectNo]} />
-            <KV label="合同号"     value={f[F.contractNo]} />
-            <KV label="中标供应商" value={f[F.supplier]} />
-            <KV label="一级品类"   value={f[F.category1]} />
-            <KV label="采购组织"   value={f[F.buyerOrg]} />
-            <KV label="立项时间"   value={fmtDate(f[F.projectDate])} />
-            <KV label="授标时间"   value={fmtDate(f[F.grantTime])} />
-            <KV label="合同结束"   value={fmtDate(f[F.contractEndMax]) || f[F.contractEnd]} />
-            {isAdmin && <KV label="采购员" value={`${f[F.buyerName] || ''} ${f[F.buyerJobId] ? '('+f[F.buyerJobId]+')' : ''}`.trim()} />}
-          </Section>
-
-          {/* 系统计算值（只读，含财年加权） */}
-          {SYSTEM_REF_GROUPS.map(g => (
-            <Section key={g.title} title={g.title} icon={Lock} hint={g.hint} readonly>
-              {g.fields.map(meta => {
-                const raw = fmtCNY(f[meta.name])
-                return (
-                  <KV key={meta.name} keepEmpty
-                    label={meta.label}
-                    value={raw === '—' ? '—' : `${raw}${meta.unit ? ' ' + meta.unit : ''}`} />
-                )
-              })}
-            </Section>
-          ))}
-
-          {/* 可编辑：按 ⭐ 分组 */}
-          {EDITABLE_GROUPS.map(g => (
-            <Section key={g.title} title={g.title} icon={g.stars >= 3 ? Star : (g.stars >= 1 ? Sparkles : Edit3)} stars={g.stars} hint={edit ? '编辑中' : '点击右上角「编辑」修改'}>
-              {g.fields.map(meta => (
-                <EditableRow key={meta.name} meta={meta}
-                  value={edit ? draft[meta.name] : f[meta.name]}
-                  onChange={v => setDraft(d => ({ ...d, [meta.name]: v }))}
-                  choices={choices[meta.name] || []}
-                  edit={edit} />
-              ))}
-            </Section>
-          ))}
-
-          {/* 附件（只读） */}
-          <Section title="附件资料" icon={Paperclip}>
-            <AttachBlock label="历史采购价 / 市场平均价" list={getAttachments(record, F.priceAttach)} />
-            <AttachBlock label="业务认可的角色截图"       list={getAttachments(record, F.roleAttach)} />
-            <AttachBlock label="市场成本分析数据"         list={getAttachments(record, F.marketAttach)} />
-            <AttachBlock label="其他附件"                 list={getAttachments(record, F.otherAttach)} />
-          </Section>
         </div>
-      </div>
-    </div>,
-    document.body
-  )
-}
 
-function BigMetric({ label, value, unit, color }) {
-  return (
-    <div>
-      <div className="text-[11px] font-medium mb-1" style={{ color: 'var(--muted)' }}>{label}</div>
-      <div className="flex items-baseline gap-1">
-        <span className="text-[22px] font-bold tracking-tight leading-none" style={{ color }}>{value}</span>
-        <span className="text-[11px]" style={{ color: 'var(--muted)' }}>{unit}</span>
+        {/* ★ 可编辑填写区（主体） */}
+        {EDITABLE_GROUPS.map(g => (
+          <FormGroup key={g.title} title={g.title} stars={g.stars}>
+            {g.fields.map(meta => (
+              <FormField key={meta.name} meta={meta}
+                value={draft[meta.name]}
+                onChange={v => set(meta.name, v)}
+                choices={choices[meta.name] || []}
+                refValue={meta.name === F.savingAdjusted
+                  ? { sysSaving: num(f[F.saveAmount]), winAmount: num(f[F.winAmount]) }
+                  : null}
+                required={cp.missing && computeCompleteness({}).total >= 0 && isRequired(meta.name)}
+                isMissing={!cp.done && cp.missing.includes(requiredLabel(meta.name))}
+              />
+            ))}
+          </FormGroup>
+        ))}
+
+        {/* 附件（只读） */}
+        <FormGroup title="附件资料" icon={Paperclip}>
+          <AttachBlock label="历史采购价 / 市场平均价" list={getAttachments(record, F.priceAttach)} />
+          <AttachBlock label="业务认可的角色截图"       list={getAttachments(record, F.roleAttach)} />
+          <AttachBlock label="市场成本分析数据"         list={getAttachments(record, F.marketAttach)} />
+          <AttachBlock label="其他附件"                 list={getAttachments(record, F.otherAttach)} />
+          {[F.priceAttach, F.roleAttach, F.marketAttach, F.otherAttach].every(fld => getAttachments(record, fld).length === 0) && (
+            <p className="text-[11.5px]" style={{ color: 'var(--muted)' }}>暂无附件（如需上传请到原表）</p>
+          )}
+        </FormGroup>
+      </div>
+
+      {/* 底部固定操作栏 */}
+      <div className="px-5 py-3 shrink-0 flex items-center gap-3"
+        style={{ borderTop: '1px solid var(--border)', background: 'var(--surface)' }}>
+        {savedFlash && (
+          <span className="text-[12px] font-medium flex items-center gap-1" style={{ color: '#059669' }}>
+            <Check className="w-3.5 h-3.5" />已保存
+          </span>
+        )}
+        <div className="ml-auto flex items-center gap-2.5">
+          <button onClick={() => doSave(false)} disabled={saving}
+            className="press flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-semibold disabled:opacity-60"
+            style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }}>
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}保存
+          </button>
+          {hasNextTodo && (
+            <button onClick={() => doSave(true)} disabled={saving}
+              className="press flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-semibold text-white disabled:opacity-60"
+              style={{ background: 'linear-gradient(135deg,#6366F1,#8B5CF6)' }}>
+              保存并填下一个<ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
 }
 
-function Section({ title, icon: Icon, hint, stars = 0, readonly = false, children }) {
-  const starColor = stars >= 3 ? '#F59E0B' : (stars >= 1 ? '#6366F1' : null)
-  const iconColor = readonly ? 'var(--muted)' : (starColor || '#6366F1')
+// 完整度环形徽章
+function CompletenessBadge({ cp }) {
+  const color = cp.done ? '#10B981' : '#F59E0B'
+  const R = 16, C = 2 * Math.PI * R
+  const off = C * (1 - cp.pct / 100)
   return (
-    <section className="rounded-2xl overflow-hidden"
-      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-      <div className="px-5 py-3 flex items-center gap-2"
-        style={{ borderBottom: '1px solid var(--border)', background: readonly ? 'var(--surface2)' : 'transparent' }}>
-        <Icon className="w-3.5 h-3.5" style={{ color: iconColor }} />
-        {stars > 0 && (
-          <span className="text-[11px] tracking-tighter" style={{ color: starColor }}>
-            {'★'.repeat(stars)}
-          </span>
-        )}
-        <h4 className="text-[12.5px] font-bold" style={{ color: 'var(--text)' }}>{title}</h4>
-        {readonly && (
-          <span className="text-[9.5px] px-1.5 py-0.5 rounded font-medium"
-            style={{ background: 'var(--border)', color: 'var(--muted)' }}>只读</span>
-        )}
-        {hint && <span className="text-[10.5px] ml-auto text-right" style={{ color: 'var(--muted)' }}>{hint}</span>}
+    <div className="relative w-12 h-12 shrink-0">
+      <svg width="48" height="48" className="-rotate-90">
+        <circle cx="24" cy="24" r={R} fill="none" stroke="var(--surface2)" strokeWidth="4" />
+        <circle cx="24" cy="24" r={R} fill="none" stroke={color} strokeWidth="4"
+          strokeDasharray={C} strokeDashoffset={off} strokeLinecap="round"
+          style={{ transition: 'stroke-dashoffset 0.4s ease' }} />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        {cp.done
+          ? <Check className="w-5 h-5" style={{ color }} />
+          : <span className="text-[11px] font-bold tabular-nums" style={{ color }}>{cp.pct}%</span>}
       </div>
-      <div className="p-5 space-y-3">
-        {children}
+    </div>
+  )
+}
+
+// 表单分组
+function FormGroup({ title, stars = 0, icon: Icon, children }) {
+  const starColor = stars >= 3 ? '#F59E0B' : (stars >= 1 ? '#6366F1' : null)
+  return (
+    <section>
+      <div className="flex items-center gap-2 mb-3">
+        {Icon
+          ? <Icon className="w-4 h-4" style={{ color: '#6366F1' }} />
+          : starColor && <span className="text-[12px] tracking-tighter" style={{ color: starColor }}>{'★'.repeat(stars)}</span>}
+        <h4 className="text-[13px] font-bold" style={{ color: 'var(--text)' }}>{title}</h4>
       </div>
+      <div className="space-y-4 pl-0.5">{children}</div>
     </section>
   )
 }
 
-// 可编辑行：按字段类型分发（text / longText / number / singleSelect / multipleSelect）
-function EditableRow({ meta, value, onChange, choices, edit }) {
-  const { name, type, unit } = meta
-  // 原始字段名中若带 ⭐⭐⭐ 前缀，提取出来用金色强调
-  const starMatch = name.match(/^(⭐+)(.*)$/)
-  const starPrefix = starMatch?.[1] || ''
-  const rawLabel = (starMatch?.[2] ?? name).trim()
+// 单个填写字段（始终可编辑）
+function FormField({ meta, value, onChange, choices, refValue, isMissing }) {
+  const { name, type, label, unit } = meta
+  const displayLabel = label || name.replace(/^⭐+/, '').trim()
 
-  const labelBlock = (
-    <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-      {starPrefix && (
-        <span className="text-[11px] tracking-tighter"
-          style={{ color: starPrefix.length >= 3 ? '#F59E0B' : '#6366F1' }}>
-          {starPrefix}
-        </span>
-      )}
-      <span className="text-[11.5px] font-medium break-all" style={{ color: 'var(--text)', opacity: 0.8 }}>{rawLabel}</span>
-      {unit && <span className="text-[10.5px]" style={{ color: 'var(--muted)', opacity: 0.7 }}>（{unit}）</span>}
-    </div>
-  )
-
-  // 只读展示
-  if (!edit) {
-    const display = (() => {
-      if (value === null || value === undefined || value === '') return '—'
-      if (Array.isArray(value)) return value.length ? value.join(' · ') : '—'
-      if (type === 'number') return fmtCNY(value)
-      return String(value)
-    })()
-    const isEmpty = display === '—'
-    return (
-      <div>
-        {labelBlock}
-        <div className="text-[12.5px] leading-relaxed whitespace-pre-wrap rounded-xl px-3 py-2"
-          style={{ background: 'var(--surface2)', color: isEmpty ? 'var(--muted)' : 'var(--text)', minHeight: 38 }}>
-          {display}
-        </div>
-      </div>
-    )
-  }
-
-  // 编辑态：按类型渲染
   return (
     <div>
-      {labelBlock}
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <span className="text-[12.5px] font-medium" style={{ color: 'var(--text)' }}>{displayLabel}</span>
+        {unit && <span className="text-[10.5px]" style={{ color: 'var(--muted)' }}>（{unit}）</span>}
+        {isMissing && (
+          <span className="text-[10px] px-1.5 py-px rounded font-semibold"
+            style={{ background: 'rgba(245,158,11,0.12)', color: '#B45309' }}>待填</span>
+        )}
+      </div>
+
       {type === 'longText' ? (
         <textarea value={value || ''} onChange={e => onChange(e.target.value)} rows={3}
           className="w-full px-3 py-2 rounded-xl text-[12.5px] outline-none resize-y"
-          style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }} />
+          style={{ background: 'var(--surface2)', color: 'var(--text)',
+            border: `1px solid ${isMissing ? 'rgba(245,158,11,0.4)' : 'var(--border)'}` }} />
       ) : type === 'number' ? (
-        <input type="number" step="any" value={value ?? ''} onChange={e => onChange(e.target.value)}
-          className="w-full px-3 py-2 rounded-xl text-[12.5px] outline-none tabular-nums"
-          style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }} />
+        <NumberField value={value} onChange={onChange} refValue={refValue} isMissing={isMissing} />
       ) : type === 'singleSelect' ? (
-        <SingleSelectEditor value={value || ''} onChange={onChange} choices={choices} />
+        <SingleSelectEditor value={value || ''} onChange={onChange} choices={choices} isMissing={isMissing} />
       ) : type === 'multipleSelect' ? (
         <MultiSelectEditor value={Array.isArray(value) ? value : (value ? [value] : [])} onChange={onChange} choices={choices} />
       ) : (
         <input value={value ?? ''} onChange={e => onChange(e.target.value)}
           className="w-full px-3 py-2 rounded-xl text-[12.5px] outline-none"
-          style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }} />
+          style={{ background: 'var(--surface2)', color: 'var(--text)',
+            border: `1px solid ${isMissing ? 'rgba(245,158,11,0.4)' : 'var(--border)'}` }} />
       )}
     </div>
   )
 }
 
-function SingleSelectEditor({ value, onChange, choices }) {
+// 金额输入 + 系统值实时对比
+function NumberField({ value, onChange, refValue, isMissing }) {
+  const v = num(value)
+  const sys = refValue?.sysSaving || 0
+  const win = refValue?.winAmount || 0
+  const hasInput = value !== '' && value !== null && value !== undefined
+  // 偏离度：填写值 vs 系统参考降本
+  const deviation = (hasInput && sys > 0) ? (v - sys) / sys : null
+  const bigDeviation = deviation !== null && Math.abs(deviation) > 0.3
+  const rate = (hasInput && win > 0) ? v / win : null
+
+  return (
+    <div>
+      <div className="relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px]" style={{ color: 'var(--muted)' }}>¥</span>
+        <input type="number" step="any" value={value ?? ''} onChange={e => onChange(e.target.value)}
+          placeholder="填写金额"
+          className="w-full pl-7 pr-3 py-2 rounded-xl text-[13px] outline-none tabular-nums"
+          style={{ background: 'var(--surface2)', color: 'var(--text)',
+            border: `1px solid ${bigDeviation ? 'rgba(245,158,11,0.5)' : (isMissing ? 'rgba(245,158,11,0.4)' : 'var(--border)')}` }} />
+      </div>
+      {refValue && (
+        <div className="flex items-center gap-3 flex-wrap mt-1.5 text-[11px]">
+          <span style={{ color: 'var(--muted)' }}>
+            系统参考降本 <span className="font-semibold tabular-nums" style={{ color: 'var(--text)' }}>¥{fmtCNY(sys)}</span>
+          </span>
+          {win > 0 && (
+            <span style={{ color: 'var(--muted)' }}>
+              中标 <span className="font-semibold tabular-nums" style={{ color: 'var(--text)' }}>¥{fmtCNY(win)}</span>
+            </span>
+          )}
+          {rate !== null && (
+            <span style={{ color: 'var(--muted)' }}>
+              降本率 <span className="font-semibold tabular-nums" style={{ color: '#059669' }}>{fmtPct(rate)}</span>
+            </span>
+          )}
+          {hasInput && sys > 0 && (
+            bigDeviation
+              ? <span className="font-semibold" style={{ color: '#D97706' }}>
+                  ⚠ 与系统值偏离 {deviation > 0 ? '+' : ''}{(deviation * 100).toFixed(0)}%，请核对
+                </span>
+              : <span className="font-medium" style={{ color: '#059669' }}>✓ 接近系统值</span>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SingleSelectEditor({ value, onChange, choices, isMissing }) {
   return (
     <div className="relative">
       <select value={value} onChange={e => onChange(e.target.value)}
         className="w-full appearance-none px-3 pr-8 py-2 rounded-xl text-[12.5px] outline-none cursor-pointer"
-        style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }}>
+        style={{ background: 'var(--surface2)', color: value ? 'var(--text)' : 'var(--muted)',
+          border: `1px solid ${isMissing ? 'rgba(245,158,11,0.4)' : 'var(--border)'}` }}>
         <option value="">— 请选择 —</option>
-        {choices.map(c => (
-          <option key={c.name} value={c.name}>{c.name}</option>
-        ))}
+        {choices.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
       </select>
       <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: 'var(--muted)' }} />
     </div>
@@ -865,32 +684,25 @@ function MultiSelectEditor({ value, onChange, choices }) {
   const set = new Set(value)
   function toggle(name) {
     const next = new Set(set)
-    if (next.has(name)) next.delete(name); else next.add(name)
+    next.has(name) ? next.delete(name) : next.add(name)
     onChange([...next])
   }
   if (!choices.length) {
-    return (
-      <div className="text-[11.5px] rounded-xl px-3 py-2"
-        style={{ background: 'var(--surface2)', color: 'var(--muted)' }}>
-        （未加载到选项）
-      </div>
-    )
+    return <div className="text-[11.5px] rounded-xl px-3 py-2" style={{ background: 'var(--surface2)', color: 'var(--muted)' }}>（未加载到选项）</div>
   }
   return (
-    <div className="flex flex-wrap gap-1.5 rounded-xl p-2"
-      style={{ background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+    <div className="flex flex-wrap gap-1.5">
       {choices.map(c => {
         const active = set.has(c.name)
         return (
           <button key={c.name} type="button" onClick={() => toggle(c.name)}
-            className="press inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11.5px] font-medium transition-colors"
+            className="press inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11.5px] font-medium transition-colors"
             style={{
-              background: active ? 'rgba(99,102,241,0.12)' : 'var(--surface)',
+              background: active ? 'rgba(99,102,241,0.12)' : 'var(--surface2)',
               color: active ? '#4F46E5' : 'var(--muted)',
               border: `1px solid ${active ? 'rgba(99,102,241,0.3)' : 'var(--border)'}`,
             }}>
-            {active && <Check className="w-3 h-3" />}
-            {c.name}
+            {active && <Check className="w-3 h-3" />}{c.name}
           </button>
         )
       })}
@@ -898,12 +710,11 @@ function MultiSelectEditor({ value, onChange, choices }) {
   )
 }
 
-function KV({ label, value, keepEmpty = false }) {
+function KV({ label, value }) {
   const empty = value === null || value === undefined || value === '' || value === '—'
-  if (empty && !keepEmpty) return null
   return (
-    <div className="flex gap-4 text-[12.5px] leading-relaxed">
-      <span className="shrink-0 w-[150px]" style={{ color: 'var(--muted)' }}>{label}</span>
+    <div className="flex gap-2 text-[12px] leading-relaxed">
+      <span className="shrink-0 w-[72px]" style={{ color: 'var(--muted)' }}>{label}</span>
       <span className="flex-1 break-all" style={{ color: empty ? 'var(--muted)' : 'var(--text)' }}>{empty ? '—' : value}</span>
     </div>
   )
@@ -929,20 +740,36 @@ function AttachBlock({ label, list }) {
   )
 }
 
+// 极简下拉（列表筛选区复用，支持 block 占满整行）
+function MiniSelect({ value, onChange, options, placeholder, icon: Icon, block }) {
+  const opts = options.map(o => typeof o === 'string' ? { value: o, label: o } : o)
+  const active = !!value
+  return (
+    <div className={`relative ${block ? 'w-full' : ''}`}>
+      {Icon && (
+        <Icon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: 'var(--muted)' }} />
+      )}
+      <select value={value} onChange={e => onChange(e.target.value)}
+        className={`appearance-none py-2 pr-7 rounded-lg text-[12px] outline-none cursor-pointer ${Icon ? 'pl-8' : 'pl-3'} ${block ? 'w-full' : ''}`}
+        style={{ background: 'var(--surface2)', color: 'var(--text)', fontWeight: 500, border: '1px solid var(--border)' }}>
+        {placeholder && <option value="">{placeholder}</option>}
+        {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none" style={{ color: 'var(--muted)', opacity: 0.7 }} />
+    </div>
+  )
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 function ErrorState({ msg, onRetry }) {
   return (
     <div className="flex items-center justify-center py-20">
-      <div className="max-w-md w-full rounded-2xl p-6 text-center"
-        style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <div className="max-w-md w-full rounded-2xl p-6 text-center" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
         <AlertCircle className="w-8 h-8 mx-auto mb-3" style={{ color: '#F59E0B' }} />
         <p className="text-[13px] font-semibold mb-1" style={{ color: 'var(--text)' }}>加载失败</p>
         <p className="text-[11.5px] mb-4" style={{ color: 'var(--muted)' }}>{msg}</p>
-        <button onClick={onRetry}
-          className="press px-4 py-2 rounded-xl text-[12px] font-semibold text-white"
-          style={{ background: 'linear-gradient(135deg,#6366F1,#8B5CF6)' }}>
-          重试
-        </button>
+        <button onClick={onRetry} className="press px-4 py-2 rounded-xl text-[12px] font-semibold text-white"
+          style={{ background: 'linear-gradient(135deg,#6366F1,#8B5CF6)' }}>重试</button>
       </div>
     </div>
   )
@@ -952,12 +779,11 @@ function Empty({ hasData }) {
   return (
     <div className="flex items-center justify-center py-20">
       <div className="text-center">
-        <div className="w-16 h-16 mx-auto mb-3 rounded-full flex items-center justify-center"
-          style={{ background: 'var(--surface2)' }}>
+        <div className="w-16 h-16 mx-auto mb-3 rounded-full flex items-center justify-center" style={{ background: 'var(--surface2)' }}>
           <FileText className="w-7 h-7" style={{ color: 'var(--muted)' }} />
         </div>
         <p className="text-[13px] font-medium mb-1" style={{ color: 'var(--text)' }}>
-          {hasData ? '没有符合条件的单据' : '暂无您的成本台账记录'}
+          {hasData ? '没有符合条件的项目' : '暂无您的成本台账记录'}
         </p>
         <p className="text-[11.5px]" style={{ color: 'var(--muted)' }}>
           {hasData ? '试试调整搜索或筛选条件' : '系统仅显示以您工号登记的采购记录'}
@@ -975,7 +801,6 @@ function toArr(v) {
   if (v === null || v === undefined || v === '') return []
   return [v]
 }
-function uniq(arr) { return [...new Set(arr.filter(Boolean))] }
 function pickEditable(fields) {
   const out = {}
   for (const k of EDITABLE) {
@@ -990,3 +815,13 @@ function fmtDate(v) {
   if (!Number.isFinite(d.getTime())) return String(v)
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
+// 必填字段映射（与 REQUIRED_FIELDS 对齐，用于"待填"高亮）
+const REQUIRED_MAP = {
+  [F.categoryBig]:    '采购品类',
+  [F.role]:           '项目角色',
+  [F.saveMethods]:    '核心降本方式',
+  [F.savingAdjusted]: 'FY27 调整后降本金额',
+  [F.saveMeasures]:   '具体降本举措',
+}
+function isRequired(name) { return name in REQUIRED_MAP }
+function requiredLabel(name) { return REQUIRED_MAP[name] || '' }

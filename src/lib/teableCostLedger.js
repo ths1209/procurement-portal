@@ -96,13 +96,10 @@ export const EDITABLE_GROUPS = [
     ],
   },
   {
-    title: '角色与加权核对',
+    title: '角色与说明',
     stars: 1,
     fields: [
       { name: F.role,            type: 'singleSelect', stars: 1, label: '在项目中的角色' },
-      { name: F.fy27Correct,     type: 'text',         stars: 1, label: 'FY27 核对后降本金额（2.28 口径）', unit: '元' },
-      { name: F.fy28Correct,     type: 'text',         stars: 1, label: 'FY28 加权降本金额（2.28 口径）', unit: '元' },
-      { name: F.fy29Correct,     type: 'text',         stars: 1, label: 'FY29 加权降本金额（2.28 口径）', unit: '元' },
       { name: F.roleReason,      type: 'longText',     stars: 0, label: '主导角色原因说明' },
       { name: F.saveContribution,type: 'text',         stars: 0, label: '在项目中的降本贡献度' },
     ],
@@ -121,6 +118,60 @@ export const EDITABLE = EDITABLE_GROUPS.flatMap(g => g.fields.map(f => f.name))
 export const FIELD_META = Object.fromEntries(
   EDITABLE_GROUPS.flatMap(g => g.fields).map(f => [f.name, f])
 )
+
+// 系统只读参考字段：跑数 / Teable 公式产出，用户不可改，抽屉里分组展示
+export const SYSTEM_REF_GROUPS = [
+  {
+    title: '系统参考金额',
+    hint: '由系统跑数 / 公式计算，不可手填',
+    fields: [
+      { name: F.saveAmount,   label: '参考降本金额', unit: '元' },
+      { name: F.winAmountRaw, label: '中标总金额',   unit: '元' },
+      { name: F.savingAfter,  label: '核算后降本金额（532 口径）' },
+      { name: F.systemSaving, label: '系统降本金额' },
+    ],
+  },
+  {
+    title: '财年加权降本（2.28 口径）',
+    hint: '系统按「合同周期 ∩ 财年周期」加权计算，每次跑数自动刷新，不可手填',
+    fields: [
+      { name: F.fy27Correct, label: 'FY27 加权降本金额', unit: '元' },
+      { name: F.fy28Correct, label: 'FY28 加权降本金额', unit: '元' },
+      { name: F.fy29Correct, label: 'FY29 加权降本金额', unit: '元' },
+    ],
+  },
+]
+
+// 决定项目「是否完善」的必填字段（标签 + 核心降本金额 + 举措）
+export const REQUIRED_FIELDS = [
+  { name: F.categoryBig,    label: '采购品类' },
+  { name: F.role,           label: '项目角色' },
+  { name: F.saveMethods,    label: '核心降本方式' },
+  { name: F.savingAdjusted, label: 'FY27 调整后降本金额' },
+  { name: F.saveMeasures,   label: '具体降本举措' },
+]
+
+// 判定单个值是否为空（多选空数组 / 数字 null|'' / 文本空串 均视为未填）
+function isBlank(v) {
+  if (v === null || v === undefined) return true
+  if (Array.isArray(v)) return v.length === 0
+  if (typeof v === 'string') return v.trim() === ''
+  return false
+}
+
+/**
+ * 计算项目填写完整度（仅基于 REQUIRED_FIELDS）。
+ * @returns {{ done:boolean, filled:number, total:number, pct:number, missing:string[] }}
+ */
+export function computeCompleteness(fields = {}) {
+  const missing = []
+  for (const f of REQUIRED_FIELDS) {
+    if (isBlank(fields[f.name])) missing.push(f.label)
+  }
+  const total = REQUIRED_FIELDS.length
+  const filled = total - missing.length
+  return { done: missing.length === 0, filled, total, pct: Math.round(filled / total * 100), missing }
+}
 
 async function req(path, init = {}) {
   const res = await fetch(`${API}/api${path}`, {

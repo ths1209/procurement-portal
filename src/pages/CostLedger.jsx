@@ -1,15 +1,16 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   Wallet, Search, Loader2, AlertCircle, ExternalLink, X,
-  Crown, User, Sparkles, FileText, TrendingDown, Users,
+  Crown, User, Sparkles, FileText,
   Calendar, Paperclip, Save, Edit3, SlidersHorizontal,
-  Check, ChevronDown, Star, RefreshCw, Handshake,
+  Check, ChevronDown, Star, RefreshCw, Handshake, Lock, ClipboardList,
 } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { useAuth } from '../contexts/AuthContext'
 import {
   listCostLedger, updateCostLedger, getAttachments, loadFieldChoices, loadViews,
-  fmtCNY, fmtPct, isCostLedgerConfigured, F, EDITABLE, EDITABLE_GROUPS, DEFAULT_VIEW,
+  fmtCNY, fmtPct, isCostLedgerConfigured, F, EDITABLE, EDITABLE_GROUPS,
+  SYSTEM_REF_GROUPS, computeCompleteness, DEFAULT_VIEW,
 } from '../lib/teableCostLedger'
 
 // 角色 → 颜色（柔和色块，非渐变）
@@ -48,6 +49,7 @@ export default function CostLedger() {
   const [cat,     setCat]     = useState('')
   const [buyer,   setBuyer]   = useState('')
   const [org,     setOrg]     = useState('')
+  const [status,  setStatus]  = useState('')   // ''=全部 | 'todo'=待完善 | 'done'=已完善
   const [sort,    setSort]    = useState('saving-desc')
 
   useEffect(() => { load() }, [profile?.jobId, profile?.role, viewId])
@@ -77,7 +79,7 @@ export default function CostLedger() {
   function switchView(id) {
     if (id === viewId) return
     setViewId(id)
-    setKeyword(''); setRole(''); setCat(''); setBuyer(''); setOrg('')
+    setKeyword(''); setRole(''); setCat(''); setBuyer(''); setOrg(''); setStatus('')
     setPicked(null)
   }
 
@@ -108,6 +110,10 @@ export default function CostLedger() {
     })
     if (buyer) v = v.filter(r => r.fields[F.buyerName] === buyer)
     if (org)   v = v.filter(r => r.fields[F.buyerOrg] === org)
+    if (status) v = v.filter(r => {
+      const isDone = computeCompleteness(r.fields).done
+      return status === 'done' ? isDone : !isDone
+    })
     const k = sort
     v.sort((a, b) => {
       const fa = a.fields, fb = b.fields
@@ -118,7 +124,7 @@ export default function CostLedger() {
       return 0
     })
     return v
-  }, [rows, keyword, role, cat, buyer, org, sort])
+  }, [rows, keyword, role, cat, buyer, org, status, sort])
 
   // 概览统计：按三个角色分别计数
   const stats = useMemo(() => {
@@ -128,6 +134,13 @@ export default function CostLedger() {
       if (byRole[k] !== undefined) byRole[k] += 1
     }
     return byRole
+  }, [rows])
+
+  // 完整度统计：待完善 / 已完善 数量
+  const completeness = useMemo(() => {
+    let done = 0
+    for (const r of rows) if (computeCompleteness(r.fields).done) done++
+    return { total: rows.length, done, todo: rows.length - done }
   }, [rows])
 
   if (error) {
@@ -142,6 +155,11 @@ export default function CostLedger() {
 
       <ViewTabs views={views} current={viewId} onSwitch={switchView} loading={loading} />
 
+      {!loading && completeness.total > 0 && (
+        <TodoBanner c={completeness} active={status === 'todo'}
+          onFocus={() => setStatus(status === 'todo' ? '' : 'todo')} />
+      )}
+
       <StatGrid s={stats} activeRole={role} onRoleClick={setRole} />
 
       <Toolbar
@@ -150,6 +168,7 @@ export default function CostLedger() {
         cat={cat}         setCat={setCat}         catOpts={catOpts}
         buyer={buyer}     setBuyer={setBuyer}     buyerOpts={buyerOpts}
         org={org}         setOrg={setOrg}         orgOpts={orgOpts}
+        status={status}   setStatus={setStatus}
         sort={sort}       setSort={setSort}
         count={view.length}
         isAdmin={isAdmin}
@@ -208,6 +227,52 @@ function Header({ isAdmin, loading, onReload, shareUrl }) {
         </a>
       </div>
     </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 待办横幅：驱动用户完善项目
+function TodoBanner({ c, active, onFocus }) {
+  const allDone = c.todo === 0
+  const pct = c.total > 0 ? Math.round(c.done / c.total * 100) : 0
+  if (allDone) {
+    return (
+      <div className="flex items-center gap-2.5 px-4 py-3 rounded-2xl"
+        style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
+        <Check className="w-4 h-4 shrink-0" style={{ color: '#059669' }} />
+        <span className="text-[13px] font-semibold" style={{ color: '#047857' }}>
+          全部 {c.total} 个项目已完善 🎉
+        </span>
+      </div>
+    )
+  }
+  return (
+    <button onClick={onFocus}
+      className="press w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition-colors"
+      style={{
+        background: active ? 'rgba(245,158,11,0.12)' : 'rgba(245,158,11,0.06)',
+        border: `1px solid ${active ? 'rgba(245,158,11,0.4)' : 'rgba(245,158,11,0.2)'}`,
+      }}>
+      <ClipboardList className="w-4 h-4 shrink-0" style={{ color: '#D97706' }} />
+      <div className="flex-1 min-w-0">
+        <p className="text-[13px] font-semibold" style={{ color: '#92400E' }}>
+          你还有 <span className="tabular-nums">{c.todo}</span> 个项目待完善
+        </p>
+        <div className="flex items-center gap-2 mt-1.5">
+          <div className="flex-1 max-w-[220px] h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(245,158,11,0.18)' }}>
+            <div className="h-full rounded-full transition-all"
+              style={{ width: `${pct}%`, background: 'linear-gradient(90deg,#F59E0B,#10B981)' }} />
+          </div>
+          <span className="text-[11px] tabular-nums" style={{ color: '#B45309' }}>
+            {c.done}/{c.total} 已完善
+          </span>
+        </div>
+      </div>
+      <span className="text-[11px] font-semibold px-2.5 py-1 rounded-lg shrink-0"
+        style={{ background: active ? '#D97706' : 'rgba(245,158,11,0.15)', color: active ? '#fff' : '#B45309' }}>
+        {active ? '正在筛选' : '只看待完善'}
+      </span>
+    </button>
   )
 }
 
@@ -313,10 +378,10 @@ function StatGrid({ s, activeRole, onRoleClick }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 function Toolbar({ keyword, setKeyword, role, setRole, roleOpts,
                    cat, setCat, catOpts, buyer, setBuyer, buyerOpts,
-                   org, setOrg, orgOpts, sort, setSort, count, isAdmin }) {
-  const hasFilter = role || cat || buyer || org || keyword
+                   org, setOrg, orgOpts, status, setStatus, sort, setSort, count, isAdmin }) {
+  const hasFilter = role || cat || buyer || org || keyword || status
   function clearAll() {
-    setKeyword(''); setRole(''); setCat(''); setBuyer(''); setOrg('')
+    setKeyword(''); setRole(''); setCat(''); setBuyer(''); setOrg(''); setStatus('')
   }
   return (
     <div className="flex items-center gap-2 flex-wrap px-1">
@@ -328,6 +393,10 @@ function Toolbar({ keyword, setKeyword, role, setRole, roleOpts,
           style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid transparent' }} />
       </div>
 
+      <MiniSelect value={status} onChange={setStatus} placeholder="全部状态" options={[
+        { value: 'todo', label: '待完善' },
+        { value: 'done', label: '已完善' },
+      ]} />
       <MiniSelect value={role} onChange={setRole} placeholder="全部角色" options={roleOpts} />
       <MiniSelect value={cat}  onChange={setCat}  placeholder="全部品类" options={catOpts} />
       {isAdmin && buyerOpts.length > 1 && (
@@ -405,10 +474,16 @@ function RecordCard({ record, onOpen }) {
   const catEmpty  = catArr.length === 0
   const attachCount = [F.priceAttach, F.roleAttach, F.marketAttach, F.otherAttach, F.quoteAttach]
     .reduce((s, fld) => s + (Array.isArray(f[fld]) ? f[fld].length : 0), 0)
+  const cp = computeCompleteness(f)
 
   return (
     <button onClick={onOpen}
-      className="card cost-card text-left w-full rounded-2xl p-5 group">
+      className="card cost-card text-left w-full rounded-2xl p-5 group relative">
+      {/* 未完善：左上角琥珀圆点 */}
+      {!cp.done && (
+        <span className="absolute top-3 left-3 w-2 h-2 rounded-full"
+          style={{ background: '#F59E0B', boxShadow: '0 0 0 3px rgba(245,158,11,0.15)' }} />
+      )}
       {/* 顶部：角色 + 品类 */}
       <div className="flex items-center justify-between mb-4">
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-semibold"
@@ -447,9 +522,30 @@ function RecordCard({ record, onOpen }) {
         合同 <span className="font-semibold" style={{ color: 'var(--text)' }}>¥{fmtCNY(winAmount)}</span>
       </p>
 
+      {/* 完整度进度 */}
+      <div className="pt-3 mb-2.5" style={{ borderTop: '1px solid var(--border)' }}>
+        {cp.done ? (
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold" style={{ color: '#059669' }}>
+            <Check className="w-3 h-3" />已完善
+          </span>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[11px] font-semibold" style={{ color: '#B45309' }}>
+                待填 {cp.missing.length} 项：{cp.missing.slice(0, 2).join('、')}{cp.missing.length > 2 ? '…' : ''}
+              </span>
+              <span className="text-[10.5px] tabular-nums" style={{ color: 'var(--muted)' }}>{cp.filled}/{cp.total}</span>
+            </div>
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--surface2)' }}>
+              <div className="h-full rounded-full transition-all"
+                style={{ width: `${cp.pct}%`, background: 'linear-gradient(90deg,#F59E0B,#10B981)' }} />
+            </div>
+          </>
+        )}
+      </div>
+
       {/* 弱化 meta */}
-      <div className="flex items-center gap-3 text-[10.5px] pt-3"
-        style={{ color: 'var(--muted)', borderTop: '1px solid var(--border)' }}>
+      <div className="flex items-center gap-3 text-[10.5px]" style={{ color: 'var(--muted)' }}>
         <span className="flex items-center gap-1">
           <Calendar className="w-3 h-3" />{fmtDate(f[F.projectDate]) || '—'}
         </span>
@@ -500,6 +596,8 @@ function DetailDrawer({ record, choices, onClose, onSaved, isAdmin }) {
   const roleGradient = ROLE_GRADIENT[roleKey] || 'linear-gradient(135deg,#64748b,#94a3b8)'
   const RoleIcon = roleStyle.icon
   const rate = num(f[F.winAmount]) > 0 ? num(f[F.savingAdjusted]) / num(f[F.winAmount]) : num(f[F.saveRate])
+  // 完整度基于"当前 draft（编辑中）或已存值"实时计算
+  const cp = computeCompleteness(edit ? { ...f, ...draft } : f)
 
   return createPortal(
     <div className="fixed inset-0 z-[200] flex" onClick={onClose}
@@ -524,8 +622,10 @@ function DetailDrawer({ record, choices, onClose, onSaved, isAdmin }) {
             {!edit ? (
               <button onClick={() => setEdit(true)}
                 className="press flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium transition-colors"
-                style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }}>
-                <Edit3 className="w-3.5 h-3.5" />编辑
+                style={cp.done
+                  ? { background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }
+                  : { background: 'linear-gradient(135deg,#F59E0B,#F97316)', color: '#fff', border: '1px solid transparent' }}>
+                <Edit3 className="w-3.5 h-3.5" />{cp.done ? '编辑' : '去完善'}
               </button>
             ) : (
               <>
@@ -556,6 +656,20 @@ function DetailDrawer({ record, choices, onClose, onSaved, isAdmin }) {
         )}
 
         <div className="p-6 space-y-5">
+          {/* 完整度提示条 */}
+          {cp.done ? (
+            <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[12px]"
+              style={{ background: 'rgba(16,185,129,0.08)', color: '#047857', border: '1px solid rgba(16,185,129,0.2)' }}>
+              <Check className="w-3.5 h-3.5 shrink-0" />本项目维护信息已完善
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[12px]"
+              style={{ background: 'rgba(245,158,11,0.08)', color: '#92400E', border: '1px solid rgba(245,158,11,0.2)' }}>
+              <ClipboardList className="w-3.5 h-3.5 shrink-0" />
+              还需填写 {cp.missing.length} 项：<span className="font-semibold">{cp.missing.join('、')}</span>
+            </div>
+          )}
+
           {/* 金额大卡 */}
           <div className="rounded-2xl p-5 relative overflow-hidden"
             style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(139,92,246,0.04))', border: '1px solid var(--border)' }}>
@@ -564,6 +678,10 @@ function DetailDrawer({ record, choices, onClose, onSaved, isAdmin }) {
               <BigMetric label="调整后降本"  value={fmtCNY(f[F.savingAdjusted])}  unit="元" color="#10B981" />
               <BigMetric label="降本率"      value={fmtPct(rate).replace('%','')} unit="%" color="#F59E0B" />
             </div>
+            <p className="text-[11px] mt-3 pt-3" style={{ color: 'var(--muted)', borderTop: '1px solid var(--border)' }}>
+              系统参考降本金额 <span className="font-semibold" style={{ color: 'var(--text)' }}>¥{fmtCNY(f[F.saveAmount])}</span>
+              <span className="ml-1 opacity-70">（来自跑数，供「调整后降本」对照填写）</span>
+            </p>
           </div>
 
           {/* 项目只读信息 */}
@@ -580,11 +698,19 @@ function DetailDrawer({ record, choices, onClose, onSaved, isAdmin }) {
             {isAdmin && <KV label="采购员" value={`${f[F.buyerName] || ''} ${f[F.buyerJobId] ? '('+f[F.buyerJobId]+')' : ''}`.trim()} />}
           </Section>
 
-          {/* 系统计算值（只读） */}
-          <Section title="系统计算" icon={TrendingDown}>
-            <KV label="核算后降本金额" value={fmtCNY(f[F.savingAfter])} />
-            <KV label="系统降本金额"   value={fmtCNY(f[F.systemSaving])} />
-          </Section>
+          {/* 系统计算值（只读，含财年加权） */}
+          {SYSTEM_REF_GROUPS.map(g => (
+            <Section key={g.title} title={g.title} icon={Lock} hint={g.hint} readonly>
+              {g.fields.map(meta => {
+                const raw = fmtCNY(f[meta.name])
+                return (
+                  <KV key={meta.name} keepEmpty
+                    label={meta.label}
+                    value={raw === '—' ? '—' : `${raw}${meta.unit ? ' ' + meta.unit : ''}`} />
+                )
+              })}
+            </Section>
+          ))}
 
           {/* 可编辑：按 ⭐ 分组 */}
           {EDITABLE_GROUPS.map(g => (
@@ -625,19 +751,26 @@ function BigMetric({ label, value, unit, color }) {
   )
 }
 
-function Section({ title, icon: Icon, hint, stars = 0, children }) {
+function Section({ title, icon: Icon, hint, stars = 0, readonly = false, children }) {
   const starColor = stars >= 3 ? '#F59E0B' : (stars >= 1 ? '#6366F1' : null)
+  const iconColor = readonly ? 'var(--muted)' : (starColor || '#6366F1')
   return (
-    <section className="rounded-2xl overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-      <div className="px-5 py-3 flex items-center gap-2" style={{ borderBottom: '1px solid var(--border)' }}>
-        <Icon className="w-3.5 h-3.5" style={{ color: starColor || '#6366F1' }} />
+    <section className="rounded-2xl overflow-hidden"
+      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <div className="px-5 py-3 flex items-center gap-2"
+        style={{ borderBottom: '1px solid var(--border)', background: readonly ? 'var(--surface2)' : 'transparent' }}>
+        <Icon className="w-3.5 h-3.5" style={{ color: iconColor }} />
         {stars > 0 && (
           <span className="text-[11px] tracking-tighter" style={{ color: starColor }}>
             {'★'.repeat(stars)}
           </span>
         )}
         <h4 className="text-[12.5px] font-bold" style={{ color: 'var(--text)' }}>{title}</h4>
-        {hint && <span className="text-[10.5px] ml-auto" style={{ color: 'var(--muted)' }}>{hint}</span>}
+        {readonly && (
+          <span className="text-[9.5px] px-1.5 py-0.5 rounded font-medium"
+            style={{ background: 'var(--border)', color: 'var(--muted)' }}>只读</span>
+        )}
+        {hint && <span className="text-[10.5px] ml-auto text-right" style={{ color: 'var(--muted)' }}>{hint}</span>}
       </div>
       <div className="p-5 space-y-3">
         {children}
@@ -765,12 +898,13 @@ function MultiSelectEditor({ value, onChange, choices }) {
   )
 }
 
-function KV({ label, value }) {
-  if (value === null || value === undefined || value === '') return null
+function KV({ label, value, keepEmpty = false }) {
+  const empty = value === null || value === undefined || value === '' || value === '—'
+  if (empty && !keepEmpty) return null
   return (
     <div className="flex gap-4 text-[12.5px] leading-relaxed">
-      <span className="shrink-0 w-[110px]" style={{ color: 'var(--muted)' }}>{label}</span>
-      <span className="flex-1 break-all" style={{ color: 'var(--text)' }}>{value}</span>
+      <span className="shrink-0 w-[150px]" style={{ color: 'var(--muted)' }}>{label}</span>
+      <span className="flex-1 break-all" style={{ color: empty ? 'var(--muted)' : 'var(--text)' }}>{empty ? '—' : value}</span>
     </div>
   )
 }
